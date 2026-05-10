@@ -5,6 +5,7 @@ import {
   Key, Mail, Lock, Shield
 } from 'lucide-react';
 import api from '../services/api';
+import { showSystemNotice } from '../components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
 
@@ -22,6 +23,8 @@ const statusColors: Record<string, { bg: string; text: string }> = {
   'inativo': { bg: '#fef2f2', text: '#dc2626' },
   'bloqueado': { bg: '#fef2f2', text: '#dc2626' }
 };
+
+const getApiData = (payload: any) => payload?.data?.data || payload?.data || payload;
 
 export function Entregadores() {
   const [couriers, setCouriers] = useState<any[]>([]);
@@ -118,20 +121,28 @@ export function Entregadores() {
         await api.patch(`/entregadores/${formData.id}`, payload);
       } else {
         const res = await api.post('/entregadores', payload);
-        courierId = res.data.data.id;
+        courierId = getApiData(res)?.id;
       }
 
       // If requested to create login
       if (formData.createLogin && formData.email && formData.password) {
+        if (!courierId) {
+          showSystemNotice('Entregador criado, mas não foi possível identificar o vínculo para criar o login.');
+          return;
+        }
+
         await api.post('/usuarios', {
           nome: formData.nome,
           email: formData.email,
           senha: formData.password,
           telefone: formData.telefone,
           perfil: 'entregador',
+          tipo_usuario: 'entregador',
           status: 'ativo',
           loja_id: user?.loja_id,
-          entregador_id: courierId
+          entregador_id: courierId,
+          entregadorId: courierId,
+          driverId: courierId
         });
       }
 
@@ -139,7 +150,7 @@ export function Entregadores() {
       fetchCouriers();
     } catch (error) {
       console.error('Error saving courier:', error);
-      alert('Erro ao salvar entregador. Verifique os dados e tente novamente.');
+      showSystemNotice('Erro ao salvar entregador. Verifique os dados e tente novamente.');
     } finally {
       setSubmitting(false);
     }
@@ -152,7 +163,7 @@ export function Entregadores() {
       fetchCouriers();
     } catch (error) {
       console.error('Error deleting courier:', error);
-      alert('Erro ao excluir entregador.');
+      showSystemNotice('Erro ao excluir entregador.');
     }
   };
 

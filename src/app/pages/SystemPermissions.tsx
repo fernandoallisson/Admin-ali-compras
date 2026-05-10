@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Shield, X, Key } from 'lucide-react';
 import api from '../services/api';
+import { showSystemNotice } from '../components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
 
@@ -32,7 +33,7 @@ function PermissionForm({ permission, onClose, onSuccess }: { permission?: Permi
       onClose();
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar permissão. Verifique se o slug é único.');
+      showSystemNotice('Erro ao salvar permissão. Verifique se o slug é único.');
     } finally {
       setLoading(false);
     }
@@ -116,7 +117,7 @@ export function SystemPermissions() {
       fetchPermissions();
     } catch (err) {
       console.error(err);
-      alert('Erro ao excluir permissão.');
+      showSystemNotice('Erro ao excluir permissão.');
     }
   };
 

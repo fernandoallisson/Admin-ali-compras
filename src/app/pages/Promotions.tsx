@@ -4,6 +4,7 @@ import {
   AlertCircle, DollarSign, TrendingDown, Percent, Plus
 } from 'lucide-react';
 import api from '../services/api';
+import { showSystemNotice } from '../components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
 
@@ -44,7 +45,7 @@ export function Promotions() {
       const val = parseFloat(price.toString().replace(',', '.'));
       
       if (isNaN(val)) {
-        alert('Preço inválido');
+        showSystemNotice('Preço inválido');
         return;
       }
 
@@ -57,7 +58,7 @@ export function Promotions() {
       setShowAddPromo(false);
     } catch (error) {
       console.error('Error updating promotion price:', error);
-      alert('Erro ao atualizar preço promocional');
+      showSystemNotice('Erro ao atualizar preço promocional');
     } finally {
       setSaving(false);
     }
@@ -73,7 +74,7 @@ export function Promotions() {
       fetchProducts();
     } catch (error) {
       console.error('Error removing promotion:', error);
-      alert('Erro ao remover promoção');
+      showSystemNotice('Erro ao remover promoção');
     }
   };
 

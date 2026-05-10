@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import api from "../services/api";
 import LoadingModal from "../components/ui/LoadingModal";
+import { showSystemNotice } from "../components/SystemNoticeModal";
+import { getApiList } from "../utils/apiData";
 
 const PRIMARY = "#122a4c";
 
@@ -107,8 +109,10 @@ export function Settings() {
     if (!lojaId) return;
     try {
       setLoadingAreas(true);
-      const response = await api.get(`/areas_entrega?loja_id=${lojaId}`);
-      setAreasEntrega(response.data.data?.results || []);
+      const response = await api.get("/areas_entrega", {
+        params: { loja_id: lojaId, per_page: 100 },
+      });
+      setAreasEntrega(getApiList(response.data));
     } catch (error) {
       console.error("Erro ao carregar áreas de entrega:", error);
     } finally {
@@ -335,7 +339,7 @@ export function Settings() {
 
   const handleCreateArea = async () => {
     if (!newArea.nome || !newArea.cidade || !newArea.estado) {
-      alert("Por favor, preencha o nome, cidade e estado.");
+      showSystemNotice("Por favor, preencha o nome, cidade e estado.");
       return;
     }
 
@@ -362,7 +366,7 @@ export function Settings() {
       setTimeout(() => setShowSuccess(false), 1500);
     } catch (err) {
       console.error("Erro ao criar área de entrega:", err);
-      alert("Erro ao criar área de entrega");
+      showSystemNotice("Erro ao criar área de entrega");
     } finally {
       setIsSaving(false);
     }
@@ -378,7 +382,7 @@ export function Settings() {
       loadAreasEntrega();
     } catch (err) {
       console.error("Erro ao excluir área de entrega:", err);
-      alert("Erro ao excluir área de entrega");
+      showSystemNotice("Erro ao excluir área de entrega");
     } finally {
       setLoadingAreas(false);
     }

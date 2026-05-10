@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Power, Ticket, X, Copy, Check } from 'lucide-react';
 import api from '../services/api';
+import { showSystemNotice } from '../components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
 
@@ -46,7 +47,7 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
       onClose();
     } catch (error) {
       console.error('Error saving coupon', error);
-      alert('Erro ao salvar cupom. Verifique os campos.');
+      showSystemNotice('Erro ao salvar cupom. Verifique os campos.');
     } finally {
       setLoading(false);
     }

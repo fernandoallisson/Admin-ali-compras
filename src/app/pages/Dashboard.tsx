@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
 import { useState, useEffect } from 'react';
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import {
@@ -22,17 +22,12 @@ const statusColor: Record<string, string> = {
   'Cancelado': '#dc2626',
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTES_PER_DAY = 24 * 60;
+const salesIntervalOptions = [15, 30, 60, 120];
 
 const parseLocalDate = (value: string) => {
   const [year, month, day] = value.split('-').map(Number);
   return new Date(year, month - 1, day);
-};
-
-const addDays = (date: Date, days: number) => {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
 };
 
 const formatDateInput = (date: Date) => {
@@ -42,17 +37,55 @@ const formatDateInput = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const formatChartLabel = (date: Date, endDate?: Date) => {
-  const sameMonth = endDate && date.getMonth() === endDate.getMonth() && date.getFullYear() === endDate.getFullYear();
-  return date.toLocaleDateString('pt-BR', sameMonth ? { day: '2-digit' } : { day: '2-digit', month: '2-digit' });
+const formatDisplayDate = (date: string) => date.split('-').reverse().join('/');
+
+const formatTimeLabel = (totalMinutes: number) => {
+  const normalizedMinutes = Math.min(totalMinutes, MINUTES_PER_DAY - 1);
+  const hours = Math.floor(normalizedMinutes / 60);
+  const minutes = normalizedMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
-const getSalesPointDate = (point: any) => {
-  const value = point?.date || point?.data || point?.dia || point?.created_at || point?.periodo;
-  if (!value || typeof value !== 'string') return null;
+const parseTimeToMinutes = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value <= 23 ? value * 60 : value;
+  }
 
-  const date = value.includes('T') ? new Date(value) : parseLocalDate(value.slice(0, 10));
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (typeof value !== 'string') return null;
+
+  const match = value.match(/(\d{1,2})(?::|h)?(\d{2})?/);
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2] || 0);
+  const total = hours * 60 + minutes;
+  return total >= 0 && total < MINUTES_PER_DAY ? total : null;
+};
+
+const applyTimeToDate = (date: Date, timeValue: unknown) => {
+  const minutes = parseTimeToMinutes(timeValue);
+  if (minutes === null) return date;
+
+  const next = new Date(date);
+  next.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return next;
+};
+
+const getSalesPointDate = (point: any, fallbackDate?: string) => {
+  const value = point?.date || point?.data || point?.dia || point?.created_at || point?.createdAt || point?.timestamp || point?.periodo;
+  const timeValue = point?.hora ?? point?.hour ?? point?.time ?? point?.horario;
+
+  if (value && typeof value === 'string') {
+    const date = value.includes('T') ? new Date(value) : applyTimeToDate(parseLocalDate(value.slice(0, 10)), timeValue);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (fallbackDate && timeValue !== undefined) {
+    const date = applyTimeToDate(parseLocalDate(fallbackDate), timeValue);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
 };
 
 const getSalesPointValue = (point: any) => {
@@ -61,38 +94,48 @@ const getSalesPointValue = (point: any) => {
   return Number.isFinite(number) ? number : 0;
 };
 
-const buildSalesChartData = (rawData: any[], startDate: string, endDate: string) => {
-  const start = parseLocalDate(startDate);
-  const end = parseLocalDate(endDate);
-  const safeEnd = end >= start ? end : start;
-  const totalDays = Math.max(1, Math.floor((safeEnd.getTime() - start.getTime()) / DAY_MS) + 1);
-  const bucketSize = totalDays <= 14 ? 1 : Math.ceil(totalDays / 12);
-  const bucketCount = Math.ceil(totalDays / bucketSize);
+const isSameLocalDay = (date: Date, day: string) => {
+  const selected = parseLocalDate(day);
+  return date.getFullYear() === selected.getFullYear()
+    && date.getMonth() === selected.getMonth()
+    && date.getDate() === selected.getDate();
+};
+
+const getMinutesSinceStartOfDay = (date: Date) => date.getHours() * 60 + date.getMinutes();
+
+const normalizeIntervalMinutes = (value: number) => {
+  return salesIntervalOptions.includes(value) ? value : 60;
+};
+
+const buildSalesChartData = (rawData: any[], selectedDate: string, intervalMinutes: number) => {
+  const safeInterval = normalizeIntervalMinutes(intervalMinutes);
+  const bucketCount = Math.ceil(MINUTES_PER_DAY / safeInterval);
 
   const buckets = Array.from({ length: bucketCount }, (_, index) => {
-    const bucketStart = addDays(start, index * bucketSize);
-    const bucketEnd = addDays(bucketStart, Math.min(bucketSize, totalDays - index * bucketSize) - 1);
-    const label = bucketSize === 1
-      ? formatChartLabel(bucketStart, safeEnd)
-      : `${formatChartLabel(bucketStart, safeEnd)}-${formatChartLabel(bucketEnd, safeEnd)}`;
+    const startMinutes = index * safeInterval;
+    const endMinutes = Math.min(MINUTES_PER_DAY, startMinutes + safeInterval);
+    const label = safeInterval === 60
+      ? formatTimeLabel(startMinutes)
+      : `${formatTimeLabel(startMinutes)}-${formatTimeLabel(endMinutes - 1)}`;
 
     return {
-      day: label,
+      hour: label,
       vendas: 0,
-      start: formatDateInput(bucketStart),
-      end: formatDateInput(bucketEnd)
+      start: formatTimeLabel(startMinutes),
+      end: formatTimeLabel(endMinutes - 1),
     };
   });
 
-  const dataWithDates = rawData.filter(point => getSalesPointDate(point));
+  const dataWithDates = rawData.filter(point => getSalesPointDate(point, selectedDate));
 
   if (dataWithDates.length > 0) {
     dataWithDates.forEach((point) => {
-      const pointDate = getSalesPointDate(point);
-      if (!pointDate || pointDate < start || pointDate > safeEnd) return;
+      const pointDate = getSalesPointDate(point, selectedDate);
+      if (!pointDate || !isSameLocalDay(pointDate, selectedDate)) return;
+
       const bucketIndex = Math.min(
         bucketCount - 1,
-        Math.floor((pointDate.getTime() - start.getTime()) / DAY_MS / bucketSize)
+        Math.floor(getMinutesSinceStartOfDay(pointDate) / safeInterval)
       );
       buckets[bucketIndex].vendas += getSalesPointValue(point);
     });
@@ -103,11 +146,11 @@ const buildSalesChartData = (rawData: any[], startDate: string, endDate: string)
     return buckets.map((bucket, index) => ({ ...bucket, vendas: getSalesPointValue(rawData[index]) }));
   }
 
-  if (rawData.length === 1 && bucketCount === 1) {
-    return [{ ...buckets[0], vendas: getSalesPointValue(rawData[0]) }];
-  }
-
   return buckets;
+};
+
+const todayDateInput = () => {
+  return formatDateInput(new Date());
 };
 
 export function Dashboard() {
@@ -116,10 +159,8 @@ export function Dashboard() {
   const [storeConfig, setStoreConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Filtro de data, padrão: hoje
-  const today = new Date().toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(todayDateInput);
+  const [salesIntervalMinutes, setSalesIntervalMinutes] = useState(60);
 
   const user = (() => {
     try {
@@ -135,7 +176,7 @@ export function Dashboard() {
       setLoading(true);
       try {
         const [metricsRes, configRes] = await Promise.allSettled([
-          api.get(`/metricas?dataInicio=${startDate}&dataFim=${endDate}`),
+          api.get(`/metricas?dataInicio=${selectedDate}&dataFim=${selectedDate}`),
           user?.loja_id ? api.get(`/lojas/${user.loja_id}/configuracoes`) : Promise.resolve(null)
         ]);
 
@@ -160,7 +201,7 @@ export function Dashboard() {
     };
 
     fetchDashboardData();
-  }, [navigate, startDate, endDate, user?.loja_id]);
+  }, [navigate, selectedDate, user?.loja_id]);
 
   if (loading && !metrics) {
     return (
@@ -172,19 +213,19 @@ export function Dashboard() {
 
   // Fallbacks if data is not present
   const statCards = [
-    { label: 'Pedidos', value: metrics?.pedidosHoje?.total || '0', sub: 'No período', icon: ShoppingCart, color: '#2563eb', bg: '#eff6ff' },
+    { label: 'Pedidos', value: metrics?.pedidosHoje?.total || '0', sub: 'No dia', icon: ShoppingCart, color: '#2563eb', bg: '#eff6ff' },
     { label: 'Em Andamento', value: metrics?.pedidosAndamento || '0', sub: 'Atuais', icon: Activity, color: '#d97706', bg: '#fffbeb' },
     { label: 'Entregues', value: metrics?.pedidosEntregues || '0', sub: 'Concluídos', icon: CheckCircle2, color: '#16a34a', bg: '#f0fdf4' },
     { label: 'Cancelados', value: metrics?.pedidosCancelados || '0', sub: 'Cancelados', icon: XCircle, color: '#dc2626', bg: '#fef2f2' },
-    { label: 'Faturamento', value: `R$ ${parseFloat(metrics?.faturamentoDiario?.total || '0').toFixed(2)}`, sub: 'No período', icon: DollarSign, color: PRIMARY, bg: '#eef2f9' },
+    { label: 'Faturamento', value: `R$ ${parseFloat(metrics?.faturamentoDiario?.total || '0').toFixed(2)}`, sub: 'No dia', icon: DollarSign, color: PRIMARY, bg: '#eef2f9' },
     { label: 'Ticket Médio', value: `R$ ${parseFloat(metrics?.ticketMedio || '0').toFixed(2)}`, sub: 'Por pedido', icon: TrendingUp, color: '#7c3aed', bg: '#f5f3ff' },
-    { label: 'Clientes Novos', value: metrics?.novosClientes || '0', sub: 'No período', icon: Users, color: '#0891b2', bg: '#ecfeff' },
+    { label: 'Clientes Novos', value: metrics?.novosClientes || '0', sub: 'No dia', icon: Users, color: '#0891b2', bg: '#ecfeff' },
     { label: 'Em Rota', value: metrics?.pedidosEmRota || '0', sub: 'Atuais', icon: Truck, color: '#ea580c', bg: '#fff7ed' },
   ];
 
   const rawSalesData = Array.isArray(metrics?.vendasSemana) ? metrics.vendasSemana : [];
-  const salesData = buildSalesChartData(rawSalesData, startDate, endDate);
-  const salesIntervalLabel = startDate === endDate ? 'Hoje' : `${startDate.split('-').reverse().join('/')} a ${endDate.split('-').reverse().join('/')}`;
+  const salesData = buildSalesChartData(rawSalesData, selectedDate, salesIntervalMinutes);
+  const salesIntervalLabel = `${formatDisplayDate(selectedDate)} · ${salesIntervalMinutes} min`;
   const statusData = metrics?.statusData || [];
   const orders = metrics?.pedidosRecentes || [];
   const topProducts = metrics?.topProdutos || [];
@@ -210,7 +251,7 @@ export function Dashboard() {
       >
         <div>
           <div className="text-white/70 text-xs mb-0.5">
-            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            {parseLocalDate(selectedDate).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </div>
           <h2 className="text-white font-semibold">
             {greeting}, {user?.nome?.split(' ')[0] || 'Administrador'}. Boas vindas!
@@ -223,21 +264,25 @@ export function Dashboard() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center bg-white/10 rounded-lg p-1 text-sm">
+          <div className="flex flex-wrap items-center gap-2 bg-white/10 rounded-lg p-1 text-sm">
             <Calendar className="w-4 h-4 ml-2 mr-1 text-white/70" />
             <input 
               type="date" 
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
               className="bg-transparent border-none text-white outline-none cursor-pointer p-1 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)]"
             />
-            <span className="text-white/50 px-1">até</span>
-            <input 
-              type="date" 
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="bg-transparent border-none text-white outline-none cursor-pointer p-1 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)]"
-            />
+            <select
+              value={salesIntervalMinutes}
+              onChange={(e) => setSalesIntervalMinutes(Number(e.target.value))}
+              className="bg-white/10 border border-white/10 rounded-md text-white outline-none cursor-pointer px-2 py-1"
+            >
+              {salesIntervalOptions.map((minutes) => (
+                <option key={minutes} value={minutes} className="text-gray-900">
+                  {minutes} min
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
@@ -264,30 +309,24 @@ export function Dashboard() {
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-gray-800 font-semibold">Vendas no Período</h3>
-              <p className="text-gray-400 text-xs mt-0.5">Faturamento por intervalo em R$</p>
+              <h3 className="text-gray-800 font-semibold">Vendas por Hora</h3>
+              <p className="text-gray-400 text-xs mt-0.5">Faturamento por intervalo de minutos em R$</p>
             </div>
             <div className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 bg-white">
               {salesIntervalLabel}
             </div>
           </div>
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={salesData.length ? salesData : [{ day: 'Hoje', vendas: 0 }]} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PRIMARY} stopOpacity={0.15} />
-                  <stop offset="95%" stopColor={PRIMARY} stopOpacity={0} />
-                </linearGradient>
-              </defs>
+            <LineChart data={salesData.length ? salesData : [{ hour: '00:00', vendas: 0 }]} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={18} />
               <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
               <Tooltip
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
                 formatter={(v: number) => [`R$ ${v.toLocaleString('pt-BR')}`, 'Vendas']}
               />
-              <Area type="monotone" dataKey="vendas" stroke={PRIMARY} strokeWidth={2} fill="url(#salesGrad)" />
-            </AreaChart>
+              <Line type="monotone" dataKey="vendas" stroke={PRIMARY} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
 
@@ -295,7 +334,7 @@ export function Dashboard() {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="mb-4">
             <h3 className="text-gray-800 font-semibold">Status dos Pedidos</h3>
-            <p className="text-gray-400 text-xs mt-0.5">Distribuição hoje</p>
+            <p className="text-gray-400 text-xs mt-0.5">Distribuição no dia</p>
           </div>
           <ResponsiveContainer width="100%" height={140}>
             <PieChart>
@@ -367,7 +406,7 @@ export function Dashboard() {
         <div className="space-y-4">
           {/* Top products */}
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h3 className="text-gray-800 font-semibold mb-3">Mais Vendidos Hoje</h3>
+            <h3 className="text-gray-800 font-semibold mb-3">Mais Vendidos no Dia</h3>
             <div className="space-y-3">
               {topProducts.length > 0 ? topProducts.map((p: any, i: number) => (
                 <div key={p.name} className="flex items-center gap-2">
@@ -383,7 +422,7 @@ export function Dashboard() {
                   </div>
                 </div>
               )) : (
-                 <div className="text-sm text-gray-500 text-center">Nenhum produto vendido hoje.</div>
+                 <div className="text-sm text-gray-500 text-center">Nenhum produto vendido neste dia.</div>
               )}
             </div>
           </div>

@@ -4,6 +4,7 @@ import {
   ChevronDown, Grid2X2, List, Trash2, CheckCircle2, AlertCircle, Tag, Star  
 } from 'lucide-react';
 import api from '../services/api';
+import { showSystemNotice } from '../components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
 
@@ -184,7 +185,7 @@ function GlobalProductSelector({ existingProductIds, onSelect, onClose }: { exis
                           Para manter o padrão de qualidade, novos produtos são cadastrados pela nossa equipe de catálogo.
                         </p>
                         <button 
-                          onClick={() => alert('Sua solicitação para o produto "' + search + '" foi enviada para nossa equipe de catálogo. Retornaremos em breve!')}
+                          onClick={() => showSystemNotice('Sua solicitação para o produto "' + search + '" foi enviada para nossa equipe de catálogo. Retornaremos em breve!')}
                           className="mt-4 px-4 py-2 bg-amber-500 text-white text-[11px] font-bold rounded-lg uppercase tracking-wider hover:bg-amber-600 transition-colors shadow-sm active:scale-95"
                         >
                           Solicitar Cadastro
@@ -320,7 +321,7 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
       onClose();
     } catch (error: any) {
       console.error('Error saving product association', error);
-      alert(error.response?.data?.message || 'Erro ao salvar produto na loja');
+      showSystemNotice(error.response?.data?.message || 'Erro ao salvar produto na loja');
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, MapPin, Navigation, Package, RefreshCw, Route, Truck, User } from 'lucide-react';
 import api from '../services/api';
+import { showSystemNotice } from '../components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
 
@@ -151,7 +152,7 @@ export function Deliveries() {
       await fetchDeliveries();
     } catch (err) {
       console.error('Error generating route:', err);
-      alert('Não foi possível gerar a rota. Verifique se a loja e os endereços possuem coordenadas.');
+      showSystemNotice('Não foi possível gerar a rota. Verifique se a loja e os endereços possuem coordenadas.');
     } finally {
       setUpdatingRouteId(null);
     }
@@ -164,7 +165,7 @@ export function Deliveries() {
       await fetchDeliveries();
     } catch (err) {
       console.error('Error starting route:', err);
-      alert('Não foi possível iniciar a entrega.');
+      showSystemNotice('Não foi possível iniciar a entrega.');
     } finally {
       setUpdatingRouteId(null);
     }
@@ -184,7 +185,7 @@ export function Deliveries() {
       )));
     } catch (err) {
       console.error('Error fetching route details:', err);
-      alert('Não foi possível carregar os pedidos desta entrega.');
+      showSystemNotice('Não foi possível carregar os pedidos desta entrega.');
     } finally {
       setLoadingRouteDetails((current) => ({ ...current, [routeId]: false }));
     }

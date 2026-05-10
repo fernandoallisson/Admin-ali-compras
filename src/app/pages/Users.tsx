@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Power, Shield, X } from 'lucide-react';
 import api from '../services/api';
+import { showSystemNotice } from '../components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
 
@@ -115,7 +116,7 @@ function UserForm({ user, onClose, onSuccess }: { user?: any; onClose: () => voi
       onClose();
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar usuário. Verifique os campos.');
+      showSystemNotice('Erro ao salvar usuário. Verifique os campos.');
     } finally {
       setLoading(false);
     }

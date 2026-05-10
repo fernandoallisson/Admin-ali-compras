@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { MouseEvent } from "react";
 import {
   Search,
   Filter,
@@ -22,304 +23,29 @@ import {
   Loader2,
 } from "lucide-react";
 import api from "../services/api";
-
-const statusColor: Record<string, { bg: string; text: string }> = {
-  Recebido: { bg: "#fffbeb", text: "#d97706" },
-  pendente: { bg: "#fffbeb", text: "#d97706" },
-  Confirmado: { bg: "#eff6ff", text: "#2563eb" },
-  confirmado: { bg: "#eff6ff", text: "#2563eb" },
-  "Em Separação": { bg: "#f5f3ff", text: "#7c3aed" },
-  em_separacao: { bg: "#f5f3ff", text: "#7c3aed" },
-  Pronto: { bg: "#ecfeff", text: "#0891b2" },
-  pronto: { bg: "#ecfeff", text: "#0891b2" },
-  "Saiu para Entrega": { bg: "#fff7ed", text: "#ea580c" },
-  saiu_para_entrega: { bg: "#fff7ed", text: "#ea580c" },
-  Entregue: { bg: "#f0fdf4", text: "#16a34a" },
-  entregue: { bg: "#f0fdf4", text: "#16a34a" },
-  Cancelado: { bg: "#fef2f2", text: "#dc2626" },
-  cancelado: { bg: "#fef2f2", text: "#dc2626" },
-};
-
-const statusLabels: Record<string, string> = {
-  pendente: "Recebido",
-  confirmado: "Confirmado",
-  em_separacao: "Em Separação",
-  pronto: "Pronto",
-  saiu_para_entrega: "Saiu para Entrega",
-  entregue: "Entregue",
-  cancelado: "Cancelado",
-};
-
-const bairroColors = [
-  { bg: "#e0f2fe", border: "#7dd3fc", text: "#0c4a6e", dot: "#0284c7" },
-  { bg: "#ecfdf5", border: "#86efac", text: "#166534", dot: "#16a34a" },
-  { bg: "#ede9fe", border: "#c4b5fd", text: "#5b21b6", dot: "#7c3aed" },
-  { bg: "#fff7ed", border: "#fdba74", text: "#9a3412", dot: "#f97316" },
-  { bg: "#fef2f2", border: "#fecaca", text: "#991b1b", dot: "#dc2626" },
-  { bg: "#ecfeff", border: "#67e8f9", text: "#0f766e", dot: "#06b6d4" },
-  { bg: "#fefce8", border: "#fde68a", text: "#713f12", dot: "#f59e0b" },
-  { bg: "#f8fafc", border: "#cbd5e1", text: "#0f172a", dot: "#334155" },
-];
-
-const allStatuses = [
-  "Todos",
-  "Recebido",
-  "Confirmado",
-  "Em Separação",
-  "Pronto",
-  "Saiu para Entrega",
-  "Entregue",
-  "Cancelado",
-];
-const statusFlow = [
-  "Recebido",
-  "Confirmado",
-  "Em Separação",
-  "Pronto",
-  "Saiu para Entrega",
-  "Entregue",
-];
-const frontendToBackendStatus: Record<string, string | undefined> = {
-  Todos: undefined,
-  Recebido: "pendente",
-  Confirmado: "confirmado",
-  "Em Separação": "em_separacao",
-  Pronto: "pronto",
-  "Saiu para Entrega": "saiu_para_entrega",
-  Entregue: "entregue",
-  Cancelado: "cancelado",
-};
-const PRIMARY = "#122a4c";
-
-const orderItemsMock = [
-  { name: "Arroz Camil 1kg", qty: 2, price: 8.49, obs: "" },
-  { name: "Leite Italac 1L", qty: 4, price: 4.89, obs: "" },
-];
-
-const extractBairro = (address: string) => {
-  if (!address) return "Não informado";
-  const parts = address.split("–");
-  return parts.length > 1 ? parts[1].trim() : "Não informado";
-};
-
-const getApiList = (payload: any): any[] => {
-  const data = payload?.data;
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(payload)) return payload;
-  return [];
-};
-
-const getBackendStatus = (status: string) => {
-  const mapped = Object.entries(statusLabels).find(
-    ([, label]) => label === status,
-  );
-  if (mapped) return mapped[0];
-
-  return status
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, "_");
-};
-
-const canChangeDeliveryCourier = (delivery: any) =>
-  !delivery || ["aguardando", "atribuida"].includes(delivery.status);
-
-const isDeliveryOrder = (order: any) =>
-  (order?.tipo_pedido || order?.type || "").toLowerCase() === "entrega";
-
-const getOrderNeighborhood = (order: any) =>
-  order.endereco_cliente?.bairro || extractBairro(order.address || "");
-
-const getOrderAddress = (order: any) => {
-  const address = order.endereco_cliente;
-  if (!address) return order.address || "Endereço não informado";
-  return [address.logradouro || address.rua, address.numero]
-    .filter(Boolean)
-    .join(", ");
-};
-
-const getDeliveryLabel = (route: any) => {
-  if (route.status === "completed") return "Concluída";
-  if (route.status === "canceled") return "Cancelada";
-  if (!route.optimized) return "Aguardando rota";
-  if (route.status === "in_progress") return "Em andamento";
-  return "Rota gerada";
-};
-
-const getApiErrorMessage = (error: any, fallback: string) =>
-  error?.response?.data?.message || error?.response?.data?.error || fallback;
-
-const hexToRgba = (hex: string, alpha: number) => {
-  const normalized = hex.replace("#", "");
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return `rgba(18, 42, 76, ${alpha})`;
-
-  const value = parseInt(normalized, 16);
-  const r = (value >> 16) & 255;
-  const g = (value >> 8) & 255;
-  const b = value & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
-
-// Print comanda for a single order
-const printComanda = (order: any, orderItems: any[] = orderItemsMock) => {
-  const subtotal = orderItems.reduce(
-    (a, i) => a + (i.price_unit * i.quantity || i.price * i.qty),
-    0,
-  );
-  const delivery =
-    order.type === "Entrega" || order.tipo_pedido === "entrega"
-      ? order.taxa_entrega || 6.99
-      : 0;
-  const total = order.total || order.valor_total || 0;
-
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <title>Comanda ${order.numero_pedido || order.id}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', Courier, monospace; max-width: 300px; margin: 0 auto; padding: 16px; font-size: 12px; color: #000; }
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .large { font-size: 15px; }
-    .divider-solid { border-top: 1px solid #000; margin: 8px 0; }
-    .divider { border-top: 1px dashed #000; margin: 8px 0; }
-    .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-    .row-total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-bottom: 3px; }
-    .obs { font-size: 10px; color: #555; margin: 0 0 5px 16px; font-style: italic; }
-    p { margin-bottom: 4px; }
-    .tag { display: inline-block; border: 1px solid #000; padding: 1px 6px; font-size: 11px; margin: 2px 0; }
-  </style>
-</head>
-<body>
-  <div class="center">
-    <p class="large bold">SÃO JORGE SUPER</p>
-    <p style="font-size:10px">CNPJ: 00.000.000/0001-00</p>
-    <p style="font-size:10px">Rua São Jorge, 100 – Centro</p>
-    <p style="font-size:10px">Tel: (11) 3000-0000</p>
-  </div>
-  <div class="divider-solid"></div>
-  <div class="center">
-    <p class="bold large">COMANDA DE PEDIDO</p>
-    <p>Pedido: <span class="bold">${order.numero_pedido || order.id}</span></p>
-    <p>Data: ${new Date(order.created_at || new Date()).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })} ${new Date(order.created_at || new Date()).toLocaleTimeString("pt-BR")}</p>
-    <span class="tag">${(order.tipo_pedido || order.type || "").toUpperCase()}</span>
-  </div>
-  <div class="divider"></div>
-  <p><span class="bold">Cliente:</span> ${order.cliente?.nome || order.customer || "Não informado"}</p>
-  <p><span class="bold">Telefone:</span> ${order.cliente?.telefone || order.phone || "Não informado"}</p>
-  ${order.type === "Entrega" || order.tipo_pedido === "entrega" ? `<p><span class="bold">Endereço:</span> ${order.endereco_cliente?.logradouro || order.address || "Não informado"}</p><p><span class="bold">Bairro:</span> ${order.endereco_cliente?.bairro || extractBairro(order.address || "")}</p>` : ""}
-  <div class="divider"></div>
-  <p class="bold" style="margin-bottom:6px">ITENS DO PEDIDO:</p>
-  ${(Array.isArray(orderItems) ? orderItems : [])
-    .map(
-      (i) => `
-    <div class="row">
-      <span>${i.quantity || i.qty}x ${i.produto?.nome || i.name}</span>
-      <span>R$ ${((i.price_unit || i.price) * (i.quantity || i.qty)).toFixed(2).replace(".", ",")}</span>
-    </div>
-    ${i.observacoes || i.obs ? `<p class="obs">Obs: ${i.observacoes || i.obs}</p>` : ""}
-  `,
-    )
-    .join("")}
-  <div class="divider"></div>
-  <div class="row"><span>Subtotal</span><span>R$ ${subtotal.toFixed(2).replace(".", ",")}</span></div>
-  ${order.type === "Entrega" || order.tipo_pedido === "entrega" ? `<div class="row"><span>Taxa de entrega</span><span>R$ ${delivery.toFixed(2).replace(".", ",")}</span></div>` : '<div class="row"><span>Retirada na loja</span><span>Grátis</span></div>'}
-  <div class="row"><span>Desconto</span><span>R$ ${(order.desconto || 0).toFixed(2).replace(".", ",")}</span></div>
-  <div class="divider-solid"></div>
-  <div class="row-total"><span>TOTAL A PAGAR</span><span>R$ ${parseFloat(total).toFixed(2).replace(".", ",")}</span></div>
-  <div class="divider"></div>
-  <p><span class="bold">Pagamento:</span> ${order.pagamento?.metodo || order.payment || "Não informado"}</p>
-  <div class="divider-solid"></div>
-  <div class="center" style="margin-top: 8px;">
-    <p>Obrigado pela preferência!</p>
-    <p class="bold" style="margin-top:4px">São Jorge Super</p>
-    <p style="font-size:10px;margin-top:2px">www.saojorgesuper.com.br</p>
-  </div>
-  <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; }</script>
-</body>
-</html>`;
-
-  const win = window.open("", "_blank", "width=420,height=650");
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-  }
-};
-
-const printBairroRoute = (bairro: string, bairroOrders: any[]) => {
-  const total = bairroOrders.reduce(
-    (a, o) => a + parseFloat(o.valor_total || o.total || 0),
-    0,
-  );
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <title>Rota – ${bairro}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', Courier, monospace; max-width: 300px; margin: 0 auto; padding: 16px; font-size: 12px; }
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .divider { border-top: 1px dashed #000; margin: 8px 0; }
-    .divider-solid { border-top: 1px solid #000; margin: 8px 0; }
-    .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-    p { margin-bottom: 4px; }
-    .order-block { border: 1px dashed #555; padding: 8px; margin-bottom: 8px; }
-    .num { display: inline-block; width: 18px; height: 18px; border: 1px solid #000; text-align: center; line-height: 18px; margin-right: 4px; font-size: 10px; }
-  </style>
-</head>
-<body>
-  <div class="center">
-    <p class="bold" style="font-size:15px">SÃO JORGE SUPER</p>
-    <p style="font-size:10px">FOLHA DE ROTA</p>
-  </div>
-  <div class="divider-solid"></div>
-  <div class="center">
-    <p class="bold" style="font-size:13px">BAIRRO: ${bairro.toUpperCase()}</p>
-    <p>Data: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
-    <p>${bairroOrders.length} pedido${bairroOrders.length !== 1 ? "s" : ""} · R$ ${total.toFixed(2).replace(".", ",")}</p>
-  </div>
-  <div class="divider"></div>
-  ${bairroOrders
-    .map(
-      (o, i) => `
-    <div class="order-block">
-      <p><span class="num">${i + 1}</span> <span class="bold">${o.numero_pedido || o.id}</span> – ${statusLabels[o.status] || o.status}</p>
-      <p class="bold" style="margin-top:4px">${o.cliente?.nome || o.customer || "Não informado"}</p>
-      <p>${o.cliente?.telefone || o.phone || "Não informado"}</p>
-      <p>${o.endereco_cliente?.logradouro || o.address || "Não informado"}</p>
-      <div class="divider"></div>
-      <div class="row"><span>Total</span><span class="bold">R$ ${parseFloat(
-        o.valor_total || o.total || 0,
-      )
-        .toFixed(2)
-        .replace(".", ",")}</span></div>
-      <div class="row"><span>Pagamento</span><span>${o.pagamento?.metodo || o.payment || "Não informado"}</span></div>
-    </div>
-  `,
-    )
-    .join("")}
-  <div class="divider-solid"></div>
-  <div class="row bold"><span>TOTAL DA ROTA</span><span>R$ ${total.toFixed(2).replace(".", ",")}</span></div>
-  <div style="margin-top:12px">
-    <p>Entregador: _______________________</p>
-    <p style="margin-top:8px">Saída: ______ Retorno: ______</p>
-  </div>
-  <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; }</script>
-</body>
-</html>`;
-
-  const win = window.open("", "_blank", "width=420,height=700");
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-  }
-};
+import {
+  allStatuses,
+  bairroColors,
+  frontendToBackendStatus,
+  orderItemsMock,
+  PRIMARY,
+  statusColor,
+  statusFlow,
+  statusLabels,
+} from "./orders/constants";
+import { printBairroRoute, printComanda } from "./orders/print";
+import {
+  canChangeDeliveryCourier,
+  extractBairro,
+  getApiErrorMessage,
+  getApiList,
+  getBackendStatus,
+  getOrderNeighborhood,
+  hexToRgba,
+  isDeliveryOrder,
+} from "./orders/utils";
+import { DeliveryAssignmentModal } from "./orders/DeliveryAssignmentModal";
+import { showSystemNotice } from "../components/SystemNoticeModal";
 
 export function Orders() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -339,8 +65,8 @@ export function Orders() {
   const [deliveryRecords, setDeliveryRecords] = useState<any[]>([]);
   const [currentDelivery, setCurrentDelivery] = useState<any | null>(null);
   const [assigningCourier, setAssigningCourier] = useState(false);
+  const [unassigningDeliveryId, setUnassigningDeliveryId] = useState("");
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
-  const [deliveryNotice, setDeliveryNotice] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [deliveryModalOrders, setDeliveryModalOrders] = useState<any[] | null>(
@@ -353,6 +79,7 @@ export function Orders() {
   const [loadingOpenRoutes, setLoadingOpenRoutes] = useState(false);
   const [confirmStep, setConfirmStep] = useState(false);
   const [primaryColor, setPrimaryColor] = useState(PRIMARY);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const PER_PAGE = 20;
 
   const user = (() => {
@@ -529,7 +256,7 @@ export function Orders() {
 
         if (!canChangeDeliveryCourier(latestDelivery)) {
           setCurrentDelivery(latestDelivery);
-          alert(
+          showSystemNotice(
             "Não é possível alterar o entregador depois que a entrega saiu para rota.",
           );
           return;
@@ -558,7 +285,7 @@ export function Orders() {
         }
 
         if (!area) {
-          alert(
+          showSystemNotice(
             "Nenhuma área de entrega configurada para esta loja. Crie uma área de entrega primeiro.",
           );
           return;
@@ -574,7 +301,7 @@ export function Orders() {
       }
     } catch (error) {
       console.error("Error assigning courier:", error);
-      alert(
+      showSystemNotice(
         getApiErrorMessage(
           error,
           "Erro ao atribuir entregador. Verifique os dados e tente novamente.",
@@ -582,6 +309,44 @@ export function Orders() {
       );
     } finally {
       setAssigningCourier(false);
+    }
+  };
+
+  const handleUnassignCourier = async (delivery: any, event?: MouseEvent) => {
+    event?.stopPropagation();
+    if (!delivery?.id) return;
+
+    if (!canChangeDeliveryCourier(delivery)) {
+      showSystemNotice("Não é possível desvincular o entregador depois que a entrega saiu para rota.");
+      return;
+    }
+
+    try {
+      setUnassigningDeliveryId(delivery.id);
+      const response = await api.patch(`/entregas/${delivery.id}/desvincular-entregador`);
+      const updatedDelivery = response.data.data || response.data;
+
+      setDeliveryRecords((prev) =>
+        prev.map((item) => (item.id === updatedDelivery.id ? updatedDelivery : item)),
+      );
+
+      if (currentDelivery?.id === updatedDelivery.id) {
+        setCurrentDelivery(updatedDelivery);
+      }
+
+      setSelectedOrderIds((prev) =>
+        prev.filter((orderId) => orderId !== updatedDelivery.pedido_id),
+      );
+    } catch (error) {
+      console.error("Error unassigning courier:", error);
+      showSystemNotice(
+        getApiErrorMessage(
+          error,
+          "Erro ao desvincular entregador. Verifique se a entrega ainda pode ser alterada.",
+        ),
+      );
+    } finally {
+      setUnassigningDeliveryId("");
     }
   };
 
@@ -613,7 +378,7 @@ export function Orders() {
 
           if (!delivery?.entregador_id) {
             setCurrentDelivery(delivery);
-            alert(
+            showSystemNotice(
               "Atribua um entregador antes de enviar este pedido para entrega.",
             );
             return;
@@ -655,7 +420,7 @@ export function Orders() {
         }
       } catch (error) {
         console.error("Error updating status", error);
-        alert(
+        showSystemNotice(
           getApiErrorMessage(
             error,
             "Erro ao atualizar status. Verifique se as condições para este status foram atendidas (ex: entregador atribuído).",
@@ -691,8 +456,13 @@ export function Orders() {
     return matchSearch;
   });
 
+  const deliveryByOrderId = new Map(
+    deliveryRecords.map((delivery) => [delivery.pedido_id, delivery]),
+  );
   const assignedOrderIds = new Set(
-    deliveryRecords.map((delivery) => delivery.pedido_id),
+    deliveryRecords
+      .filter((delivery) => Boolean(delivery.entregador_id))
+      .map((delivery) => delivery.pedido_id),
   );
   const allDeliveryOrders = filtered.filter(isDeliveryOrder);
   const bairroOptions = Array.from(
@@ -716,6 +486,12 @@ export function Orders() {
     selectedOrderIds.includes(order.id),
   );
   const selectedDeliveryCount = selectedDeliveryOrders.length;
+  const activeFiltersCount = [
+    search,
+    statusFilter !== "Todos",
+    typeFilter !== "Todos",
+    bairroFilter !== "Todos",
+  ].filter(Boolean).length;
   const bairroGroups: Record<
     string,
     { orders: any[]; total: number; colorIdx: number }
@@ -764,7 +540,6 @@ export function Orders() {
     setOpenRoutes([]);
     setSelectedRouteId("");
     setConfirmStep(false);
-    setDeliveryNotice("");
   };
 
   const openDeliveryModal = (ordersToAssign: any[]) => {
@@ -779,13 +554,12 @@ export function Orders() {
         ),
     );
     if (activeOrders.length === 0) {
-      setDeliveryNotice(
+      showSystemNotice(
         "Nenhum pedido não atribuído disponível para adicionar.",
       );
       return;
     }
 
-    setDeliveryNotice("");
     const firstCourier = couriers[0]?.id || "";
     setDeliveryModalOrders(activeOrders);
     setRouteDriverId(firstCourier);
@@ -856,7 +630,7 @@ export function Orders() {
       await fetchAuxiliaryData();
       resetDeliveryModal();
     } catch (err: any) {
-      alert(
+      showSystemNotice(
         getApiErrorMessage(
           err,
           "Erro ao atualizar a entrega. Verifique os dados e tente novamente.",
@@ -885,138 +659,153 @@ export function Orders() {
         className={`flex flex-col ${selected ? "hidden lg:flex lg:w-1/2 xl:w-3/5" : "flex-1"}`}
       >
         {/* Filters bar */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 space-y-3">
+        <div className="relative bg-white border-b border-gray-200 px-4 py-2">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((open) => !open)}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+            >
               <Filter className="w-4 h-4" style={{ color: PRIMARY }} />
-              Filtros de pedidos
-            </div>
-            {(search ||
-              statusFilter !== "Todos" ||
-              typeFilter !== "Todos" ||
-              bairroFilter !== "Todos") && (
-              <button
-                onClick={() => {
-                  setSearch("");
-                  setStatusFilter("Todos");
-                  setTypeFilter(viewMode === "bairros" ? "Entrega" : "Todos");
-                  setBairroFilter("Todos");
-                }}
-                className="text-xs font-medium text-gray-500 hover:text-gray-800"
-              >
-                Limpar filtros
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(220px,1fr)_auto] gap-3">
-            <div className="relative">
-              <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
-                Busca
-              </label>
-              <Search className="absolute left-3 bottom-2.5 w-4 h-4 text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Pedido ou cliente"
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1"
+              Filtros
+              {activeFiltersCount > 0 && (
+                <span
+                  className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  {activeFiltersCount}
+                </span>
+              )}
+              <ChevronDown
+                className={`w-4 h-4 text-gray-400 transition-transform ${filtersOpen ? "rotate-180" : ""}`}
               />
-            </div>
+            </button>
 
-            <div>
-              <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
-                Visualização
-              </label>
-              <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 w-fit">
-                <button
-                  onClick={() => setViewMode("lista")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                  style={
-                    viewMode === "lista"
-                      ? { backgroundColor: PRIMARY, color: "white" }
-                      : { color: "#6b7280" }
-                  }
-                >
-                  <List className="w-3.5 h-3.5" /> Lista
-                </button>
-                <button
-                  onClick={() => setViewMode("bairros")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                  style={
-                    viewMode === "bairros"
-                      ? { backgroundColor: PRIMARY, color: "white" }
-                      : { color: "#6b7280" }
-                  }
-                >
-                  <MapIcon className="w-3.5 h-3.5" /> Por bairro
-                </button>
-              </div>
+            <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+              <button
+                onClick={() => setViewMode("lista")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                style={
+                  viewMode === "lista"
+                    ? { backgroundColor: PRIMARY, color: "white" }
+                    : { color: "#6b7280" }
+                }
+              >
+                <List className="w-3.5 h-3.5" /> Lista
+              </button>
+              <button
+                onClick={() => setViewMode("bairros")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                style={
+                  viewMode === "bairros"
+                    ? { backgroundColor: PRIMARY, color: "white" }
+                    : { color: "#6b7280" }
+                }
+              >
+                <MapIcon className="w-3.5 h-3.5" /> Por bairro
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
-                Status
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-1"
-              >
-                {allStatuses.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
-                Tipo
-              </label>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-1"
-              >
-                {(viewMode === "bairros"
-                  ? ["Entrega"]
-                  : ["Todos", "Entrega", "Retirada"]
-                ).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {viewMode === "bairros" && (
-              <div>
-                <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
-                  Bairro
-                </label>
-                <select
-                  value={bairroFilter}
-                  onChange={(e) => setBairroFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-1"
-                >
-                  <option value="Todos">Todos os bairros</option>
-                  {bairroOptions.map((bairro) => (
-                    <option key={bairro} value={bairro}>
-                      {bairro}
-                    </option>
-                  ))}
-                </select>
+          {filtersOpen && (
+            <div className="absolute left-4 right-4 top-[calc(100%-4px)] z-30 rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-gray-800">
+                  Filtros de pedidos
+                </div>
+                {activeFiltersCount > 0 && (
+                  <button
+                    onClick={() => {
+                      setSearch("");
+                      setStatusFilter("Todos");
+                      setTypeFilter(viewMode === "bairros" ? "Entrega" : "Todos");
+                      setBairroFilter("Todos");
+                    }}
+                    className="text-xs font-medium text-gray-500 hover:text-gray-800"
+                  >
+                    Limpar filtros
+                  </button>
+                )}
               </div>
-            )}
-          </div>
 
-          {viewMode === "bairros" && (
-            <div className="text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-              A visualização por bairro mostra pedidos de entrega e também
-              respeita busca, status e bairro selecionado.
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <div className="relative">
+                  <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
+                    Busca
+                  </label>
+                  <Search className="absolute left-3 bottom-2.5 w-4 h-4 text-gray-400" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Pedido ou cliente"
+                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
+                    Status
+                  </label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-1"
+                  >
+                    {allStatuses.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
+                    Tipo
+                  </label>
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-1"
+                  >
+                    {(viewMode === "bairros"
+                      ? ["Entrega"]
+                      : ["Todos", "Entrega", "Retirada"]
+                    ).map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {viewMode === "bairros" && (
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase text-gray-400 mb-1">
+                      Bairro
+                    </label>
+                    <select
+                      value={bairroFilter}
+                      onChange={(e) => setBairroFilter(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-1"
+                    >
+                      <option value="Todos">Todos os bairros</option>
+                      {bairroOptions.map((bairro) => (
+                        <option key={bairro} value={bairro}>
+                          {bairro}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {viewMode === "bairros" && (
+                <div className="mt-3 text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  A visualização por bairro mostra pedidos de entrega e também
+                  respeita busca, status e bairro selecionado.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1071,6 +860,7 @@ export function Orders() {
                 !assignedOrderIds.has(order.id) &&
                 !["entregue", "cancelado"].includes(order.status);
               const isSelectedForDelivery = selectedOrderIds.includes(order.id);
+              const assignedDelivery = deliveryByOrderId.get(order.id);
               const rowBgClass = isSelectedForDelivery
                 ? ""
                 : orderIndex % 2 === 0
@@ -1125,9 +915,25 @@ export function Orders() {
                           <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
                             {isEntrega ? "Entrega" : "Retirada"}
                           </span>
-                          {isEntrega && assignedOrderIds.has(order.id) && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                              Atribuído
+                          {isEntrega && assignedDelivery?.entregador_id && (
+                            <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                              <span>Atribuído</span>
+                              <button
+                                type="button"
+                                title="Desvincular entregador"
+                                aria-label="Desvincular entregador"
+                                disabled={unassigningDeliveryId === assignedDelivery.id}
+                                onClick={(event) =>
+                                  handleUnassignCourier(assignedDelivery, event)
+                                }
+                                className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                              >
+                                {unassigningDeliveryId === assignedDelivery.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ArrowLeft className="h-3 w-3" />
+                                )}
+                              </button>
                             </span>
                           )}
                         </div>
@@ -1481,315 +1287,22 @@ export function Orders() {
         )}
       </div>
 
-      {/* ── DELIVERY ASSIGNMENT MODAL ──────────────────── */}
       {deliveryModalOrders && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <div>
-                <h3 className="font-bold text-gray-800">
-                  {confirmStep
-                    ? "Confirmar atualização da entrega"
-                    : "Adicionar pedidos à entrega"}
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {deliveryModalOrders.length} pedido
-                  {deliveryModalOrders.length !== 1 ? "s" : ""} não atribuído
-                  {deliveryModalOrders.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <button
-                onClick={resetDeliveryModal}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-5 py-4 space-y-4">
-              {!confirmStep ? (
-                <>
-                  <div className="rounded-xl border border-gray-200 p-3 bg-gray-50">
-                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                      Novos pedidos
-                    </p>
-                    <div className="grid sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto">
-                      {deliveryModalOrders.map((order) => (
-                        <div
-                          key={order.id}
-                          className="bg-white border border-gray-100 rounded-lg px-3 py-2"
-                        >
-                          <div className="text-sm font-semibold text-gray-800">
-                            {order.numero_pedido || order.id}
-                          </div>
-                          <div className="text-xs text-gray-500 truncate">
-                            {order.cliente?.nome || order.customer || "Cliente"}
-                          </div>
-                          <div className="text-[11px] text-gray-400 truncate">
-                            {getOrderNeighborhood(order)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
-                      Selecionar Entregador
-                    </label>
-                    {couriers.length === 0 ? (
-                      <p className="text-sm text-red-500">
-                        Nenhum entregador disponível.
-                      </p>
-                    ) : (
-                      <select
-                        value={routeDriverId}
-                        onChange={(e) => handleDriverChange(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2"
-                        style={{ "--tw-ring-color": PRIMARY } as any}
-                      >
-                        {couriers.map((c: any) => (
-                          <option key={c.id} value={c.id}>
-                            {c.nome || c.name} —{" "}
-                            {c.veiculo || c.vehicle || "Veículo não informado"}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
-                      Entregas abertas deste entregador
-                    </label>
-                    {loadingOpenRoutes ? (
-                      <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Carregando entregas...
-                      </div>
-                    ) : (
-                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                        {openRoutes.map((route) => (
-                          <button
-                            key={route.id}
-                            onClick={() => setSelectedRouteId(route.id)}
-                            className={`w-full text-left rounded-xl border p-3 transition-colors ${selectedRouteId === route.id ? "border-blue-300 bg-blue-50" : "border-gray-200 hover:bg-gray-50"}`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <div className="font-semibold text-sm text-gray-800">
-                                  {route.routeName ||
-                                    `Entrega ${route.id.slice(0, 8)}`}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {getDeliveryLabel(route)} ·{" "}
-                                  {(route.neighborhoods || []).join(", ") ||
-                                    "Sem bairro"}
-                                </div>
-                              </div>
-                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-600">
-                                {route.totalStops || 0} pedidos
-                              </span>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-gray-500">
-                              <span>{route.pendingCount || 0} pendentes</span>
-                              <span>
-                                {route.deliveredCount || 0} concluídos
-                              </span>
-                              {route.totalDistanceKm && (
-                                <span>{route.totalDistanceKm} km</span>
-                              )}
-                              {route.totalDurationText && (
-                                <span>{route.totalDurationText}</span>
-                              )}
-                            </div>
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => setSelectedRouteId("__new__")}
-                          className={`w-full text-left rounded-xl border p-3 transition-colors ${selectedRouteId === "__new__" ? "border-blue-300 bg-blue-50" : "border-dashed border-gray-300 hover:bg-gray-50"}`}
-                        >
-                          <div className="font-semibold text-sm text-gray-800">
-                            Criar nova entrega
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            Ação explícita do balcão. A rota ainda não será
-                            otimizada.
-                          </div>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={resetDeliveryModal}
-                      className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={() => setConfirmStep(true)}
-                      disabled={!routeDriverId || !selectedRouteId}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-60"
-                      style={{ backgroundColor: PRIMARY }}
-                    >
-                      Continuar
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-gray-200 p-3">
-                      <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                        Entrega destino
-                      </p>
-                      {selectedRouteId === "__new__" ? (
-                        <div>
-                          <div className="font-semibold text-gray-800">
-                            Nova entrega
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            Será criada sem rota otimizada.
-                          </div>
-                        </div>
-                      ) : (
-                        (() => {
-                          const route = openRoutes.find(
-                            (r) => r.id === selectedRouteId,
-                          );
-                          return (
-                            <div>
-                              <div className="font-semibold text-gray-800">
-                                {route?.routeName || "Entrega selecionada"}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {route?.totalStops || 0} pedidos atuais ·{" "}
-                                {route?.pendingCount || 0} pendentes
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {(route?.neighborhoods || []).join(", ") ||
-                                  "Sem bairro"}
-                              </div>
-                            </div>
-                          );
-                        })()
-                      )}
-                    </div>
-                    <div className="rounded-xl border border-gray-200 p-3">
-                      <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                        Após confirmação
-                      </p>
-                      <div className="text-sm text-gray-700">
-                        Total de pedidos:{" "}
-                        <strong>
-                          {(openRoutes.find((r) => r.id === selectedRouteId)
-                            ?.totalStops || 0) + deliveryModalOrders.length}
-                        </strong>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Bairros:{" "}
-                        {Array.from(
-                          new Set([
-                            ...(openRoutes.find((r) => r.id === selectedRouteId)
-                              ?.neighborhoods || []),
-                            ...deliveryModalOrders.map(getOrderNeighborhood),
-                          ]),
-                        ).join(", ")}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-gray-200 p-3 bg-gray-50">
-                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                      Pedidos adicionados
-                    </p>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {deliveryModalOrders.map((order) => (
-                        <div
-                          key={order.id}
-                          className="flex items-start justify-between gap-3 rounded-lg bg-white border border-gray-100 px-3 py-2"
-                        >
-                          <div>
-                            <div className="text-sm font-semibold text-gray-800">
-                              {order.numero_pedido || order.id}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {order.cliente?.nome ||
-                                order.customer ||
-                                "Cliente"}
-                            </div>
-                            <div className="text-[11px] text-gray-400">
-                              {getOrderAddress(order)} ·{" "}
-                              {getOrderNeighborhood(order)}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => setConfirmStep(false)}
-                      className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                      Voltar
-                    </button>
-                    <button
-                      onClick={handleConfirmDeliveryAssignment}
-                      disabled={confirmingRoute}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-60"
-                      style={{ backgroundColor: PRIMARY }}
-                    >
-                      {confirmingRoute ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />{" "}
-                          Salvando...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-4 h-4" /> Confirmar
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {deliveryNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <div>
-                <h3 className="font-bold text-gray-800">Atenção</h3>
-              </div>
-              <button
-                onClick={() => setDeliveryNotice("")}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-5">
-              <p className="text-sm text-gray-700">{deliveryNotice}</p>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => setDeliveryNotice("")}
-                  className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-colors"
-                  style={{ backgroundColor: PRIMARY }}
-                >
-                  Fechar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <DeliveryAssignmentModal
+          orders={deliveryModalOrders}
+          confirmStep={confirmStep}
+          couriers={couriers}
+          routeDriverId={routeDriverId}
+          openRoutes={openRoutes}
+          selectedRouteId={selectedRouteId}
+          loadingOpenRoutes={loadingOpenRoutes}
+          confirmingRoute={confirmingRoute}
+          onClose={resetDeliveryModal}
+          onDriverChange={handleDriverChange}
+          onSelectRoute={setSelectedRouteId}
+          onConfirmStepChange={setConfirmStep}
+          onConfirm={handleConfirmDeliveryAssignment}
+        />
       )}
 
       {/* ── DETAIL PANEL ───────────────────────────────── */}
@@ -2068,6 +1581,20 @@ export function Orders() {
                           </div>
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        title="Desvincular entregador"
+                        aria-label="Desvincular entregador"
+                        disabled={unassigningDeliveryId === currentDelivery.id}
+                        onClick={(event) => handleUnassignCourier(currentDelivery, event)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                      >
+                        {unassigningDeliveryId === currentDelivery.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ArrowLeft className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
                   ) : (
                     <div className="text-sm text-gray-500">

@@ -22,6 +22,20 @@ export function Login() {
   const primaryColor = PLATFORM_BRANDING.cor_primaria;
   const secondaryColor = PLATFORM_BRANDING.cor_secundaria;
 
+  const persistSession = (data: any) => {
+    localStorage.setItem('token', data.access_token);
+
+    if (data.user) {
+      localStorage.setItem('user', JSON.stringify(data.user));
+    }
+
+    return data.user;
+  };
+
+  const loginAs = (userType: 'tenant' | 'driver') => (
+    api.post('/auth/login', { email, password, userType })
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -32,16 +46,18 @@ export function Login() {
     setLoading(true);
     
     try {
-      const response = await api.post('/auth/login', { email, password, userType: 'tenant' });
+      let response = await loginAs('tenant');
       
       if (response.data && response.data.access_token) {
-        localStorage.setItem('token', response.data.access_token);
-        
-        // Optional: Save user info if available
-        if (response.data.user) {
-          localStorage.setItem('user', JSON.stringify(response.data.user));
-          
-          if (response.data.user.perfil === 'entregador') {
+        const user = persistSession(response.data);
+
+        if (user?.perfil === 'entregador') {
+          try {
+            response = await loginAs('driver');
+            persistSession(response.data);
+          } catch (driverLoginError) {
+            console.warn('Driver login fallback failed, keeping tenant login response.', driverLoginError);
+          } finally {
             navigate('/driver');
             return;
           }
