@@ -11,6 +11,23 @@ import { parseMoney, parseStock } from '../utils/formatProductData';
 const PRIMARY = '#122a4c';
 
 // Categorias agora são carregadas do banco de dados
+const sortCategories = (items: any[]) =>
+  [...items].sort((a, b) => (a.ordem_exibicao ?? 0) - (b.ordem_exibicao ?? 0) || (a.nome || '').localeCompare(b.nome || ''));
+
+function getCategoryPath(categories: any[], categoryId?: string | null) {
+  if (!categoryId) return [];
+
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const path: any[] = [];
+  let current = byId.get(categoryId);
+
+  while (current) {
+    path.unshift(current);
+    current = current.categoria_pai_id ? byId.get(current.categoria_pai_id) : null;
+  }
+
+  return path;
+}
 
 function GlobalProductSelector({ existingProductIds, onSelect, onClose }: { existingProductIds: string[]; onSelect: (product: any) => void; onClose: () => void }) {
   const [search, setSearch] = useState('');
@@ -216,12 +233,21 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
     codigo_interno: product?.codigo_interno ?? '',
     categoria_id: product?.categoria_id ?? product?.produto_categoria_id ?? '',
   });
+  const initialPath = getCategoryPath(categories, product?.categoria_id ?? product?.categoria_final_id ?? product?.produto_categoria_id ?? '');
+  const [departmentId, setDepartmentId] = useState(initialPath[0]?.id ?? '');
+  const [categoryId, setCategoryId] = useState(initialPath[1]?.id ?? '');
+  const [subcategoryId, setSubcategoryId] = useState(initialPath[2]?.id ?? '');
   
   const [variations, setVariations] = useState<any[]>([]);
   const [selectedVariations, setSelectedVariations] = useState<string[]>([]);
   const [variationsData, setVariationsData] = useState<Record<string, any>>({});
   const [loadingVariations, setLoadingVariations] = useState(false);
   const [loading, setLoading] = useState(false);
+  const departments = sortCategories(categories.filter((cat: any) => (cat.nivel ?? 1) === 1));
+  const childCategories = sortCategories(categories.filter((cat: any) => cat.categoria_pai_id === departmentId));
+  const subcategories = sortCategories(categories.filter((cat: any) => cat.categoria_pai_id === categoryId));
+  const selectedCategoryId = subcategoryId || categoryId || departmentId || '';
+  const selectedCategoryPath = getCategoryPath(categories, selectedCategoryId).map((cat: any) => cat.nome).join(' > ');
 
   useEffect(() => {
     const fetchVariations = async () => {
@@ -281,7 +307,7 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
         preco_promocional: parseMoney(form.preco_promocional),
         estoque: parseStock(form.estoque),
         produto_id: isNew ? product.id : product.produto_id,
-        categoria_id: form.categoria_id || null,
+        categoria_id: selectedCategoryId || null,
         ativo_na_loja: form.ativo,
         destaque: form.destaque,
         codigo_interno: form.codigo_interno
@@ -450,18 +476,53 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1 font-medium">Categoria na Loja</label>
-                <select
-                  value={form.categoria_id}
-                  onChange={e => setForm(p => ({ ...p, categoria_id: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
-                >
-                  <option value="">Usar categoria global</option>
-                  {categories?.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>{cat.emoji || '📁'} {cat.nome}</option>
-                  ))}
-                </select>
+                <div className="space-y-2">
+                  <select
+                    value={departmentId}
+                    onChange={e => {
+                      setDepartmentId(e.target.value);
+                      setCategoryId('');
+                      setSubcategoryId('');
+                    }}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                  >
+                    <option value="">Usar categoria global</option>
+                    {departments.map((cat: any) => (
+                      <option key={cat.id} value={cat.id}>{cat.emoji || '📁'} {cat.nome}</option>
+                    ))}
+                  </select>
+
+                  {departmentId && childCategories.length > 0 && (
+                    <select
+                      value={categoryId}
+                      onChange={e => {
+                        setCategoryId(e.target.value);
+                        setSubcategoryId('');
+                      }}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                    >
+                      <option value="">Selecionar categoria</option>
+                      {childCategories.map((cat: any) => (
+                        <option key={cat.id} value={cat.id}>{cat.emoji || '📁'} {cat.nome}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  {categoryId && subcategories.length > 0 && (
+                    <select
+                      value={subcategoryId}
+                      onChange={e => setSubcategoryId(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                    >
+                      <option value="">Selecionar subcategoria</option>
+                      {subcategories.map((cat: any) => (
+                        <option key={cat.id} value={cat.id}>{cat.emoji || '📁'} {cat.nome}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 <p className="text-[10px] text-gray-400 mt-1">
-                  Se não selecionado, usará a categoria padrão do produto.
+                  Categoria final: {selectedCategoryPath || 'categoria global do produto'}.
                 </p>
               </div>
             </div>
@@ -621,12 +682,12 @@ export function ProductsScreen() {
           >
             Todas
           </button>
-          {dbCategories.map(c => (
+          {dbCategories.filter((c: any) => (c.nivel ?? 1) === 1).map(c => (
             <button
               key={c.id}
-              onClick={() => setCategoryFilter(c.nome)}
+              onClick={() => setCategoryFilter(c.id)}
               className="px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0 transition-colors flex items-center gap-1.5"
-              style={categoryFilter === c.nome ? { backgroundColor: PRIMARY, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#6b7280' }}
+              style={categoryFilter === c.id ? { backgroundColor: PRIMARY, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#6b7280' }}
             >
               <span>{c.emoji || '📁'}</span>
               {c.nome}
@@ -694,7 +755,7 @@ export function ProductsScreen() {
                     <td className="px-4 py-3 hidden md:table-cell">
                       <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 flex items-center gap-1">
                         <span>{product.categoria_emoji || '📁'}</span>
-                        {product.categoria_nome || 'Sem categoria'}
+                        {product.categoria_caminho || product.categoria_nome || 'Sem categoria'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">

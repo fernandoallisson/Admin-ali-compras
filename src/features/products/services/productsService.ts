@@ -13,7 +13,7 @@ export const productsService = {
   },
 
   async getActiveCategories() {
-    const response = await api.get("/categorias", { params: { ativa: true } });
+    const response = await api.get("/categorias", { params: { ativa: true, per_page: 100 } });
     return toList(response.data);
   },
 

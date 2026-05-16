@@ -42,13 +42,22 @@ export function useProducts() {
       const productBrand = (product.marca || "").toLowerCase();
       const searchTerm = search.toLowerCase();
       const matchSearch = productName.includes(searchTerm) || productBrand.includes(searchTerm);
-      const matchCategory = categoryFilter === "Todas" || product.categoria_nome === categoryFilter;
+      const productCategoryId = product.categoria_final_id || product.categoria_id || product.produto_categoria_id;
+      const categoryPathIds = new Set<string>();
+      let currentCategory = categories.find((category) => category.id === productCategoryId);
+
+      while (currentCategory) {
+        categoryPathIds.add(currentCategory.id);
+        currentCategory = categories.find((category) => category.id === currentCategory.categoria_pai_id);
+      }
+
+      const matchCategory = categoryFilter === "Todas" || categoryPathIds.has(categoryFilter);
       const displayStatus = product.ativo_na_loja ? "Ativo" : "Inativo";
       const matchStatus = statusFilter === "Todos" || displayStatus === statusFilter;
 
       return matchSearch && matchCategory && matchStatus;
     });
-  }, [categoryFilter, products, search, statusFilter]);
+  }, [categories, categoryFilter, products, search, statusFilter]);
 
   const toggleHighlight = async (id: string, currentStatus: boolean) => {
     try {
