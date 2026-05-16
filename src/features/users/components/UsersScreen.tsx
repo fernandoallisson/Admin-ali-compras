@@ -22,6 +22,15 @@ interface Permission {
   descricao: string;
 }
 
+const getLoggedUser = () => {
+  try {
+    const userJson = localStorage.getItem('user');
+    return userJson ? JSON.parse(userJson) : null;
+  } catch {
+    return null;
+  }
+};
+
 const rolePermissions: Record<string, string[]> = {
   'Administrador': ['dashboard', 'pedidos', 'produtos', 'categorias', 'clientes', 'cupons', 'entregadores', 'usuarios', 'configuracoes', 'financeiro', 'estoque'],
   'Operador': ['dashboard', 'pedidos', 'produtos', 'categorias', 'clientes', 'estoque'],
@@ -95,7 +104,16 @@ function UserForm({ user, onClose, onSuccess }: { user?: any; onClose: () => voi
       };
 
       if (!user) {
+        const loggedUser = getLoggedUser();
+        const lojaId = loggedUser?.loja_id;
+
+        if (!lojaId) {
+          showSystemNotice('Não foi possível identificar a loja do usuário logado.');
+          return;
+        }
+
         payload.senha = password;
+        payload.loja_id = lojaId;
       }
 
       let userId = user?.id;
@@ -258,8 +276,7 @@ export function UsersScreen() {
     }
   };
 
-  const userJson = localStorage.getItem('user');
-  const loggedUser = userJson ? JSON.parse(userJson) : null;
+  const loggedUser = getLoggedUser();
   const canManage = loggedUser?.perfil === 'administrador' || loggedUser?.perfil === 'superadmin';
 
   if (!canManage && !loading) {

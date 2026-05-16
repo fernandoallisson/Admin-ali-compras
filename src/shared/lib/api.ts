@@ -1,8 +1,12 @@
 import axios from 'axios';
 
+const DEFAULT_API_BASE_URL = 'https://mercado-backend-gtke7r7veq-rj.a.run.app/api';
+const API_BASE_URL =
+  ((import.meta as any).env?.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? DEFAULT_API_BASE_URL;
+
 // Create an Axios instance
 const api = axios.create({
-  baseURL: 'https://mercado-backend-gtke7r7veq-rj.a.run.app/api', // Backend production URL
+  baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

@@ -4,6 +4,17 @@ import api from '@/shared/lib/api';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
+const toNullableNumber = (value: string) => {
+  if (value.trim() === '') return null;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+};
+
+const toNullableInteger = (value: string) => {
+  if (value.trim() === '') return null;
+  const numericValue = Number(value);
+  return Number.isInteger(numericValue) && numericValue >= 0 ? numericValue : null;
+};
 
 function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () => void; onSuccess: () => void }) {
   const defaultType = coupon?.type || 'Percentual';
@@ -12,6 +23,7 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
   const [value, setValue] = useState(coupon?.raw_value || '');
   const [expires, setExpires] = useState(coupon?.raw_expires || '');
   const [maxUse, setMaxUse] = useState(coupon?.maxUse || '');
+  const [perCustomerUse, setPerCustomerUse] = useState(coupon?.perCustomerUse || '');
   const [minOrder, setMinOrder] = useState(coupon?.minOrder || '');
   const [loading, setLoading] = useState(false);
 
@@ -21,16 +33,16 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
       
       const tipoMapping: Record<string, string> = {
         'Percentual': 'percentual',
-        'Fixo': 'fixo',
-        'Frete Grátis': 'frete_gratis'
+        'Fixo': 'fixo'
       };
 
       const payload = {
         codigo: code,
         tipo_desconto: tipoMapping[type] || 'percentual',
-        valor_desconto: type !== 'Frete Grátis' ? parseFloat(value) : 0,
-        limite_uso_total: parseInt(maxUse) || null,
-        valor_minimo_pedido: parseFloat(minOrder) || null,
+        valor_desconto: toNullableNumber(String(value)) ?? 0,
+        limite_uso_total: toNullableInteger(String(maxUse)),
+        limite_uso_por_cliente: toNullableInteger(String(perCustomerUse)),
+        valor_minimo_pedido: toNullableNumber(String(minOrder)),
         expira_em: expires ? new Date(expires).toISOString() : null,
         ativo: coupon ? coupon.raw_ativo : true,
         // Mock loja_id for now, in a real app it'd be from auth context
@@ -72,8 +84,8 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1.5">Tipo de desconto</label>
-            <div className="grid grid-cols-3 gap-2">
-              {['Percentual', 'Fixo', 'Frete Grátis'].map(t => (
+            <div className="grid grid-cols-2 gap-2">
+              {['Percentual', 'Fixo'].map(t => (
                 <button
                   key={t}
                   onClick={() => setType(t)}
@@ -85,18 +97,18 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
               ))}
             </div>
           </div>
-          {type !== 'Frete Grátis' && (
-            <div>
-              <label className="block text-sm text-gray-600 mb-1.5">{type === 'Percentual' ? 'Percentual (%)' : 'Valor (R$)'} *</label>
-              <input
-                value={value}
-                onChange={e => setValue(e.target.value)}
-                type="number"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
-                placeholder={type === 'Percentual' ? '10' : '15.00'}
-              />
-            </div>
-          )}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1.5">{type === 'Percentual' ? 'Percentual (%)' : 'Valor (R$)'} *</label>
+            <input
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              type="number"
+              min="0"
+              step={type === 'Percentual' ? '1' : '0.01'}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
+              placeholder={type === 'Percentual' ? '10' : '15.00'}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-gray-600 mb-1.5">Validade</label>
@@ -108,20 +120,34 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1.5">Uso máximo</label>
+              <label className="block text-sm text-gray-600 mb-1.5">Quantidade total de usos</label>
               <input 
                 type="number" 
+                min="0"
                 value={maxUse}
                 onChange={e => setMaxUse(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none" 
-                placeholder="500" 
+                placeholder="Sem limite" 
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1.5">Usos por cliente</label>
+            <input
+              type="number"
+              min="0"
+              value={perCustomerUse}
+              onChange={e => setPerCustomerUse(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
+              placeholder="Sem limite por cliente"
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1.5">Valor mínimo de pedido (R$)</label>
             <input 
               type="number" 
+              min="0"
+              step="0.01"
               value={minOrder}
               onChange={e => setMinOrder(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none" 
@@ -143,7 +169,7 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
 export function CouponsScreen() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null | undefined>(undefined);
-  const [copied, setCopied] = useState<number | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchCoupons = async () => {
@@ -156,8 +182,7 @@ export function CouponsScreen() {
       const mapped = data.map((c: any) => {
         const typeMapping: Record<string, string> = {
           'percentual': 'Percentual',
-          'fixo': 'Fixo',
-          'frete_gratis': 'Frete Grátis'
+          'fixo': 'Fixo'
         };
 
         const isExpired = c.expira_em && new Date(c.expira_em) < new Date();
@@ -185,8 +210,10 @@ export function CouponsScreen() {
           status,
           raw_ativo: c.ativo,
           raw_value: c.valor_desconto,
-          maxUse: c.limite_uso_total || 0,
-          used: 0, // Mocked for now, pending usages integration
+          maxUse: c.limite_uso_total ?? '',
+          perCustomerUse: c.limite_uso_por_cliente ?? '',
+          used: c.quantidade_usada ?? c.usos_total ?? 0,
+          remainingUses: c.usos_restantes ?? null,
           minOrder: c.valor_minimo_pedido || ''
         };
       });
@@ -205,14 +232,14 @@ export function CouponsScreen() {
 
   const toggle = async (id: string, currentStatus: boolean) => {
     try {
-      await api.patch(`/cupons/${id}/status`, { ativo: !currentStatus });
+      await api.patch(`/cupons/${id}/ativo`, { ativo: !currentStatus });
       fetchCoupons();
     } catch (err) {
       console.error('Error toggling coupon status', err);
     }
   };
 
-  const copy = (id: number, code: string) => {
+  const copy = (id: string, code: string) => {
     navigator.clipboard.writeText(code).catch(() => {});
     setCopied(id);
     setTimeout(() => setCopied(null), 2000);
@@ -225,7 +252,9 @@ export function CouponsScreen() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-gray-900 font-semibold">Cupons Promocionais</h2>
-          <p className="text-gray-500 text-sm mt-0.5">{coupons.filter(c => c.status === 'Ativo').length} cupons ativos</p>
+          <p className="text-gray-500 text-sm mt-0.5">
+            {coupons.filter(c => c.status === 'Ativo').length} cupons ativos · {coupons.reduce((total, c) => total + Number(c.used || 0), 0)} usos registrados
+          </p>
         </div>
         <button
           onClick={() => setEditing(null)}
@@ -243,7 +272,9 @@ export function CouponsScreen() {
       ) : (
         <div className="space-y-3">
           {coupons.map(coupon => {
-            const pct = coupon.maxUse > 0 ? Math.round((coupon.used / coupon.maxUse) * 100) : 0;
+            const maxUse = Number(coupon.maxUse || 0);
+            const used = Number(coupon.used || 0);
+            const pct = maxUse > 0 ? Math.min(Math.round((used / maxUse) * 100), 100) : 0;
             return (
               <div key={coupon.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
                 <div className="flex items-start justify-between gap-3">
@@ -275,14 +306,20 @@ export function CouponsScreen() {
                         <span className="text-xs text-gray-500">{coupon.type}</span>
                         {coupon.value !== '—' && <span className="text-xs font-semibold text-green-600">{coupon.value}</span>}
                         <span className="text-xs text-gray-500">Validade: {coupon.expires}</span>
+                        {coupon.perCustomerUse !== '' && (
+                          <span className="text-xs text-gray-500">Por cliente: {coupon.perCustomerUse}</span>
+                        )}
                       </div>
                       {/* Usage bar */}
                       <div className="mt-2">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[11px] text-gray-500">{coupon.used} de {coupon.maxUse || '∞'} usos</span>
-                          {coupon.maxUse > 0 && <span className="text-[11px] font-medium" style={{ color: pct > 90 ? '#dc2626' : pct > 70 ? '#d97706' : '#16a34a' }}>{pct}%</span>}
+                          <span className="text-[11px] text-gray-500">
+                            {used} de {maxUse || '∞'} usos
+                            {coupon.remainingUses !== null && ` · ${coupon.remainingUses} restantes`}
+                          </span>
+                          {maxUse > 0 && <span className="text-[11px] font-medium" style={{ color: pct > 90 ? '#dc2626' : pct > 70 ? '#d97706' : '#16a34a' }}>{pct}%</span>}
                         </div>
-                        {coupon.maxUse > 0 && (
+                        {maxUse > 0 && (
                           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                             <div
                               className="h-full rounded-full transition-all"
