@@ -299,8 +299,27 @@ export function SettingsScreen() {
     "Sábado",
   ];
 
-  const handleConnectMp = () => {
-    window.location.href = `${api.defaults.baseURL}/mercadopago/oauth/authorize/${lojaId}`;
+  const handleConnectMp = async () => {
+    if (!lojaId) {
+      setError("Não foi possível identificar a loja para conectar o Mercado Pago.");
+      return;
+    }
+
+    try {
+      setLoadingMp(true);
+      const response = await api.get(`/mercadopago/oauth/authorize-url/${lojaId}`);
+      const url = response.data?.data?.url;
+
+      if (!url) {
+        throw new Error("URL de autorização do Mercado Pago não retornada.");
+      }
+
+      window.location.href = url;
+    } catch (err: any) {
+      console.error("Erro ao iniciar OAuth Mercado Pago:", err);
+      setError(err.response?.data?.error?.message || err.message || "Erro ao conectar Mercado Pago.");
+      setLoadingMp(false);
+    }
   };
 
   const paymentMethods = [
