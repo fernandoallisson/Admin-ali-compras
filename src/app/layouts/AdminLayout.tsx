@@ -56,6 +56,7 @@ export function AdminLayout() {
 
   if (user?.perfil === 'cliente') {
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
     return <Navigate to="/login" replace />;
   }

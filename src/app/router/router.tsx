@@ -29,7 +29,10 @@ export const router = createBrowserRouter([
     children: [
       {
         Component: AuthLayout,
-        children: [{ path: "/login", Component: LoginPage }],
+        children: [
+          { path: "/login", Component: LoginPage },
+          { path: "/reset-password", Component: LoginPage },
+        ],
       },
       {
         path: "/driver",
