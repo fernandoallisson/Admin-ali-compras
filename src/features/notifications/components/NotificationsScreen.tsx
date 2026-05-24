@@ -1,106 +1,217 @@
-import { useState } from 'react';
-import { Bell, Package, AlertTriangle, CreditCard, Tag, Ticket, ShoppingCart, CheckCheck } from 'lucide-react';
-import { notifications as initialNotifications } from '@/shared/constants/mockData';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Bell, CheckCheck, Megaphone, Send, Smartphone } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import {
+  createCampaign,
+  enableAdminPush,
+  fetchCampaigns,
+  fetchNotifications,
+  readNotification,
+  type InternalNotification,
+  type PushCampaign,
+} from '../services/notificationsService';
 
 const PRIMARY = '#122a4c';
 
-const typeConfig: Record<string, { icon: typeof Bell; bg: string; color: string }> = {
-  order: { icon: ShoppingCart, bg: '#eff6ff', color: '#2563eb' },
-  stock: { icon: Package, bg: '#fef2f2', color: '#dc2626' },
-  warning: { icon: AlertTriangle, bg: '#fffbeb', color: '#d97706' },
-  payment: { icon: CreditCard, bg: '#fef2f2', color: '#dc2626' },
-  promo: { icon: Tag, bg: '#f5f3ff', color: '#7c3aed' },
-  coupon: { icon: Ticket, bg: '#ecfeff', color: '#0891b2' },
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+const statusLabels: Record<string, string> = {
+  draft: 'Rascunho',
+  sending: 'Enviando',
+  sent: 'Enviada',
+  failed: 'Falhou',
+  scheduled: 'Agendada',
 };
 
 export function NotificationsScreen() {
-  const [notifications, setNotifications] = useState(initialNotifications);
-  const [filter, setFilter] = useState('Todas');
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<'history' | 'campaigns'>('history');
+  const [notifications, setNotifications] = useState<InternalNotification[]>([]);
+  const [campaigns, setCampaigns] = useState<PushCampaign[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [feedback, setFeedback] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({ title: '', body: '', image_url: '', deep_link: '/promocoes' });
 
-  const filtered = filter === 'Todas' ? notifications : filter === 'Não lidas' ? notifications.filter(n => !n.read) : notifications.filter(n => n.read);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [notificationData, campaignData] = await Promise.all([
+        fetchNotifications(),
+        fetchCampaigns(),
+      ]);
+      setNotifications(notificationData);
+      setCampaigns(campaignData);
+    } catch (error: any) {
+      setFeedback(error?.response?.data?.message || 'Não foi possível carregar notificações.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const markAllRead = () => setNotifications(ns => ns.map(n => ({ ...n, read: true })));
-  const markRead = (id: number) => setNotifications(ns => ns.map(n => n.id === id ? { ...n, read: true } : n));
+  useEffect(() => {
+    void load();
+    const refresh = () => void load();
+    window.addEventListener('notification-received', refresh);
+    return () => window.removeEventListener('notification-received', refresh);
+  }, []);
 
-  const unread = notifications.filter(n => !n.read).length;
+  const unread = useMemo(() => notifications.filter((item) => !item.read_at).length, [notifications]);
+
+  const markRead = async (notification: InternalNotification) => {
+    if (!notification.read_at) {
+      const updated = await readNotification(notification.id);
+      setNotifications((items) => items.map((item) => item.id === updated.id ? updated : item));
+    }
+    if (notification.data?.route) navigate(notification.data.route);
+  };
+
+  const markAllRead = async () => {
+    const updates = await Promise.all(
+      notifications.filter((item) => !item.read_at).map((item) => readNotification(item.id))
+    );
+    const map = new Map(updates.map((item) => [item.id, item]));
+    setNotifications((items) => items.map((item) => map.get(item.id) || item));
+  };
+
+  const activatePush = async () => {
+    try {
+      await enableAdminPush();
+      setFeedback('Notificações push ativadas neste dispositivo.');
+    } catch (error: any) {
+      setFeedback(error?.message || 'Não foi possível ativar notificações.');
+    }
+  };
+
+  const submitCampaign = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setFeedback('');
+    try {
+      await createCampaign({
+        title: form.title,
+        body: form.body,
+        image_url: form.image_url || null,
+        deep_link: form.deep_link || null,
+      });
+      setForm({ title: '', body: '', image_url: '', deep_link: '/promocoes' });
+      setFeedback('Campanha encaminhada para envio.');
+      await load();
+      setTab('campaigns');
+    } catch (error: any) {
+      setFeedback(error?.response?.data?.message || error?.message || 'Não foi possível enviar a campanha.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <div className="p-5 max-w-2xl mx-auto overflow-y-auto flex-1 h-full">
-      <div className="flex items-center justify-between mb-5">
+    <div className="p-5 overflow-y-auto flex-1 h-full max-w-5xl mx-auto w-full">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-gray-900 font-semibold">Notificações</h2>
+          <h2 className="text-gray-900 font-semibold">Notificações</h2>
+          <p className="text-gray-500 text-sm mt-0.5">Alertas operacionais e campanhas push</p>
+        </div>
+        <button onClick={activatePush} className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+          <Smartphone className="w-4 h-4" /> Ativar push
+        </button>
+      </div>
+
+      {feedback && <div className="mb-4 rounded-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">{feedback}</div>}
+
+      <div className="flex gap-2 border-b border-gray-200 mb-5">
+        <button onClick={() => setTab('history')} className="px-4 py-3 text-sm font-medium border-b-2" style={{ borderColor: tab === 'history' ? PRIMARY : 'transparent', color: tab === 'history' ? PRIMARY : '#64748b' }}>
+          Histórico {unread > 0 && `(${unread})`}
+        </button>
+        <button onClick={() => setTab('campaigns')} className="px-4 py-3 text-sm font-medium border-b-2" style={{ borderColor: tab === 'campaigns' ? PRIMARY : 'transparent', color: tab === 'campaigns' ? PRIMARY : '#64748b' }}>
+          Campanhas Push
+        </button>
+      </div>
+
+      {tab === 'history' && (
+        <section>
+          <div className="flex justify-end mb-3">
             {unread > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: '#dc2626' }}>
-                {unread}
-              </span>
+              <button onClick={markAllRead} className="flex items-center gap-1.5 text-sm" style={{ color: PRIMARY }}>
+                <CheckCheck className="w-4 h-4" /> Marcar todas como lidas
+              </button>
             )}
           </div>
-          <p className="text-gray-500 text-sm mt-0.5">Alertas e eventos operacionais</p>
-        </div>
-        {unread > 0 && (
-          <button
-            onClick={markAllRead}
-            className="flex items-center gap-1.5 text-sm hover:underline"
-            style={{ color: PRIMARY }}
-          >
-            <CheckCheck className="w-4 h-4" /> Marcar todas como lidas
-          </button>
-        )}
-      </div>
-
-      {/* Filter tabs */}
-      <div className="flex items-center gap-2 mb-5">
-        {['Todas', 'Não lidas', 'Lidas'].map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className="px-4 py-1.5 rounded-full text-xs font-medium transition-colors"
-            style={filter === f ? { backgroundColor: PRIMARY, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#6b7280' }}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-2">
-        {filtered.map(notif => {
-          const tc = typeConfig[notif.type] ?? typeConfig.order;
-          const Icon = tc.icon;
-          return (
-            <div
-              key={notif.id}
-              onClick={() => markRead(notif.id)}
-              className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all hover:shadow-sm ${
-                !notif.read ? 'bg-white border-gray-200' : 'bg-gray-50 border-transparent'
-              }`}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: tc.bg }}
-              >
-                <Icon className="w-5 h-5" style={{ color: tc.color }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-medium text-gray-800 text-sm">{notif.title}</div>
-                  {!notif.read && (
-                    <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ backgroundColor: PRIMARY }} />
-                  )}
-                </div>
-                <div className="text-sm text-gray-500 mt-0.5">{notif.desc}</div>
-                <div className="text-xs text-gray-400 mt-1">{notif.time}</div>
-              </div>
+          {loading ? <p className="text-sm text-gray-500">Carregando...</p> : (
+            <div className="space-y-2">
+              {notifications.map((item) => (
+                <button key={item.id} onClick={() => void markRead(item)} className={`w-full text-left flex items-start gap-3 p-4 rounded-md border ${item.read_at ? 'bg-gray-50 border-gray-100' : 'bg-white border-gray-200'}`}>
+                  <div className="w-9 h-9 rounded-md bg-blue-50 flex items-center justify-center flex-shrink-0">
+                    <Bell className="w-4 h-4 text-blue-700" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900">{item.title}</div>
+                    <div className="text-sm text-gray-600 mt-0.5">{item.body}</div>
+                    <div className="text-xs text-gray-400 mt-1">{formatDate(item.created_at)}</div>
+                  </div>
+                  {!item.read_at && <span className="w-2 h-2 rounded-full mt-2" style={{ backgroundColor: PRIMARY }} />}
+                </button>
+              ))}
+              {!notifications.length && <p className="text-sm text-gray-500 py-8 text-center">Nenhuma notificação.</p>}
             </div>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-            <Bell className="w-10 h-10 mb-3 opacity-40" />
-            <p className="text-sm">Nenhuma notificação encontrada</p>
-          </div>
-        )}
-      </div>
+          )}
+        </section>
+      )}
+
+      {tab === 'campaigns' && (
+        <div className="grid lg:grid-cols-[minmax(280px,360px)_1fr] gap-6">
+          <form onSubmit={submitCampaign} className="space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Megaphone className="w-4 h-4" style={{ color: PRIMARY }} />
+              <h3 className="text-sm font-semibold text-gray-900">Nova campanha</h3>
+            </div>
+            <input required maxLength={120} placeholder="Título" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            <textarea required maxLength={500} rows={4} placeholder="Mensagem" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm resize-none" />
+            <input type="url" placeholder="URL de imagem (opcional)" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            <input placeholder="Link interno, ex.: /promocoes" value={form.deep_link} onChange={(e) => setForm({ ...form, deep_link: e.target.value })} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            <div className="text-xs text-gray-500">Público: todos os clientes desta loja</div>
+            <button disabled={submitting} className="flex items-center justify-center gap-2 w-full rounded-md px-4 py-2 text-sm text-white disabled:opacity-60" style={{ backgroundColor: PRIMARY }}>
+              <Send className="w-4 h-4" /> {submitting ? 'Enviando...' : 'Enviar agora'}
+            </button>
+          </form>
+          <section>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Campanhas enviadas</h3>
+            <div className="overflow-x-auto border border-gray-200 rounded-md bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Campanha</th>
+                    <th className="text-left px-3 py-2 font-medium">Status</th>
+                    <th className="text-right px-3 py-2 font-medium">Enviados</th>
+                    <th className="text-right px-3 py-2 font-medium">Falhas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.map((campaign) => (
+                    <tr key={campaign.id} className="border-t border-gray-100">
+                      <td className="px-3 py-3">
+                        <div className="font-medium text-gray-800">{campaign.title}</div>
+                        <div className="text-xs text-gray-400">{formatDate(campaign.created_at)} | {campaign.total_devices || 0} dispositivos</div>
+                      </td>
+                      <td className="px-3 py-3 text-gray-600">{statusLabels[campaign.status] || campaign.status}</td>
+                      <td className="px-3 py-3 text-right text-green-700">{campaign.total_sent || 0}</td>
+                      <td className="px-3 py-3 text-right text-red-700">{campaign.total_failed || 0}</td>
+                    </tr>
+                  ))}
+                  {!campaigns.length && (
+                    <tr><td colSpan={4} className="p-8 text-center text-gray-500">Nenhuma campanha enviada.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

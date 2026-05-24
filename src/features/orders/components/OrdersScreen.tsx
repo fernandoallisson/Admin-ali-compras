@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { MouseEvent } from "react";
+import { useSearchParams } from "react-router";
 import {
   Search,
   Filter,
@@ -51,6 +52,7 @@ import { DeliveryAssignmentModal } from '@/features/orders/components/DeliveryAs
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 
 export function OrdersScreen() {
+  const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -275,6 +277,16 @@ export function OrdersScreen() {
       fetchOrderDelivery(order.id);
     }
   };
+
+  useEffect(() => {
+    const deepLinkedOrderId = searchParams.get('orderId');
+    if (!deepLinkedOrderId || selected?.id === deepLinkedOrderId) return;
+
+    const deepLinkedOrder = orders.find((order) => order.id === deepLinkedOrderId);
+    if (deepLinkedOrder) {
+      handleSelectOrder(deepLinkedOrder);
+    }
+  }, [orders, searchParams, selected?.id]);
 
   const updateDeliveryRecord = (delivery: any) => {
     if (!delivery?.id) return;

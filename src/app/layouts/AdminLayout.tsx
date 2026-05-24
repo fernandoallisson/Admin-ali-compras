@@ -5,8 +5,8 @@ import {
   Ticket, CreditCard, BarChart3, UserCog, Settings, Bell, Menu, X, LogOut,
   ChevronRight, Store, Key, Bike
 } from 'lucide-react';
-import { notifications } from '@/shared/constants/mockData';
 import api from '@/shared/lib/api';
+import { disableAdminPush, fetchNotifications, listenForAdminPush } from '@/features/notifications/services/notificationsService';
 
 const PRIMARY = '#122a4c';
 const PRIMARY_LIGHT = '#1a3d6e';
@@ -20,6 +20,7 @@ const navItems = [
   { label: 'Categorias', icon: Grid3X3, path: '/categories', slug: 'categorias' },
   { label: 'Promoções', icon: Tag, path: '/promotions', slug: 'produtos' }, // Using 'produtos' perm for promotions too or we can add 'promocoes'
   { label: 'Banners', icon: Image, path: '/banners', slug: 'banners' },
+  { label: 'Notificações', icon: Bell, path: '/notifications', slug: 'notificacoes' },
   { label: 'Clientes', icon: Users, path: '/customers', slug: 'clientes' },
   { label: 'Entregas', icon: Truck, path: '/deliveries', slug: 'entregadores' },
   { label: 'Entregadores', icon: User, path: '/entregadores', slug: 'entregadores' },
@@ -38,6 +39,7 @@ const superAdminItems = [
 export function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [storeName, setStoreName] = useState('Carregando...');
+  const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -61,8 +63,6 @@ export function AdminLayout() {
     return <Navigate to="/login" replace />;
   }
   
-  const unreadCount = notifications.filter(n => !n.read).length;
-
   useEffect(() => {
     if (user?.loja_id) {
       api.get(`/lojas/${user.loja_id}`).then(res => {
@@ -73,9 +73,53 @@ export function AdminLayout() {
     }
   }, [user?.loja_id]);
 
+  useEffect(() => {
+    let active = true;
+    let unlisten = () => {};
+    const refreshCount = () => {
+      fetchNotifications()
+        .then((items) => {
+          if (active) setUnreadCount(items.filter((item) => !item.read_at).length);
+        })
+        .catch(() => {});
+    };
+
+    refreshCount();
+    listenForAdminPush((payload) => {
+      refreshCount();
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const data = payload.data || {};
+        const foregroundNotification = new Notification(data.title || 'Nova notificação', { body: data.body });
+        foregroundNotification.onclick = () => {
+          window.focus();
+          if (data.route) navigate(data.route);
+        };
+      }
+    }).then((cleanup) => {
+      if (active) unlisten = cleanup;
+      else cleanup();
+    });
+    const handleReceived = () => refreshCount();
+    window.addEventListener('notification-received', handleReceived);
+
+    return () => {
+      active = false;
+      unlisten();
+      window.removeEventListener('notification-received', handleReceived);
+    };
+  }, [navigate]);
+
   const isActive = (path: string) => {
     const legacyProductImportPath = location.pathname === '/products-import' || location.pathname === '/importar-produtos';
     return location.pathname === path || location.pathname.startsWith(path + '/') || (path === '/products' && legacyProductImportPath);
+  };
+
+  const handleLogout = async () => {
+    await disableAdminPush().catch(() => {});
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
+    navigate('/login');
   };
 
   return (
@@ -184,7 +228,7 @@ export function AdminLayout() {
             </div>
             <button
               className="text-white/40 hover:text-white transition-colors"
-              onClick={() => navigate('/login')}
+              onClick={() => void handleLogout()}
               title="Sair"
             >
               <LogOut className="w-4 h-4" />
