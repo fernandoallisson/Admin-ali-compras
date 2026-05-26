@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Power, Shield, X } from 'lucide-react';
 import api from '@/shared/lib/api';
+import { formatBrasiliaDate } from '@/shared/lib/dateTime';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
@@ -254,7 +255,7 @@ export function UsersScreen() {
           raw_perfil: u.perfil,
           status: u.status === 'ativo' ? 'Ativo' : 'Inativo',
           raw_status: u.status,
-          lastLogin: u.ultimo_login_em ? new Date(u.ultimo_login_em).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Nunca'
+          lastLogin: u.ultimo_login_em ? formatBrasiliaDate(u.ultimo_login_em, { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca'
         };
       }).filter(Boolean);
 

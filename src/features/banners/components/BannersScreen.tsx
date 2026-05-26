@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, GripVertical, X, Image, Calendar, Power, Loader2, 
 import { bannersService } from '../services/bannersService';
 import type { Banner, BannerDisplayType, BannerPageKey, BannerPayload, BannerPlacementKey, BannerSegmentRules } from '../types/banner';
 import { productsService } from '@/features/products';
+import { dateInputInBrasilia, endOfBrasiliaDayInput, startOfBrasiliaDayInput } from '@/shared/lib/dateTime';
 
 const PRIMARY = '#122a4c';
 
@@ -70,7 +71,7 @@ const emptyPayload: BannerPayload = {
 
 function toDateInput(value?: string | null) {
   if (!value) return '';
-  return value.slice(0, 10);
+  return dateInputInBrasilia(value);
 }
 
 function listToText(value?: string[]) {
@@ -512,8 +513,8 @@ function BannerForm({
 
     const payload: BannerPayload = {
       ...form,
-      inicia_em: form.inicia_em || null,
-      expira_em: form.expira_em || null,
+      inicia_em: startOfBrasiliaDayInput(form.inicia_em || ''),
+      expira_em: endOfBrasiliaDayInput(form.expira_em || ''),
       segment_rules: {
         ...form.segment_rules,
         inactive_days: form.segment_rules.audience === 'inactive' ? form.segment_rules.inactive_days || 30 : undefined,

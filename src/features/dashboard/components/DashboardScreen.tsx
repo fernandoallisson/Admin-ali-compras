@@ -9,6 +9,7 @@ import {
   Package, AlertTriangle, ArrowRight, Clock, CheckCircle2, Activity, Calendar
 } from 'lucide-react';
 import api from '@/shared/lib/api';
+import { dateInputInBrasilia, formatBrasiliaTime, hourInBrasilia } from '@/shared/lib/dateTime';
 
 const PRIMARY = '#122a4c';
 
@@ -150,7 +151,7 @@ const buildSalesChartData = (rawData: any[], selectedDate: string, intervalMinut
 };
 
 const todayDateInput = () => {
-  return formatDateInput(new Date());
+  return dateInputInBrasilia();
 };
 
 export function DashboardScreen() {
@@ -232,7 +233,7 @@ export function DashboardScreen() {
   const alerts = metrics?.alertas || [];
 
   const greeting = (() => {
-    const hour = new Date().getHours();
+    const hour = hourInBrasilia();
     if (hour < 12) return 'Bom dia';
     if (hour < 18) return 'Boa tarde';
     return 'Boa noite';
@@ -380,7 +381,7 @@ export function DashboardScreen() {
                 <div className="flex items-center gap-3">
                   <div>
                     <div className="text-sm font-medium text-gray-800">{order.numero_pedido} · {order.cliente?.nome}</div>
-                    <div className="text-xs text-gray-400">{new Date(order.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {order.tipo_entrega} · {order.pagamento?.metodo}</div>
+                    <div className="text-xs text-gray-400">{formatBrasiliaTime(order.created_at)} · {order.tipo_entrega} · {order.pagamento?.metodo}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { TrendingUp, ShoppingCart, Users, XCircle, DollarSign, BarChart3, Calendar } from 'lucide-react';
 import api from '@/shared/lib/api';
+import { dateInputInBrasilia } from '@/shared/lib/dateTime';
 import { useNavigate } from 'react-router';
 
 const PRIMARY = '#122a4c';
@@ -103,7 +104,7 @@ export function ReportsScreen() {
   const [loading, setLoading] = useState(true);
 
   // Filtro de data, padrão: hoje
-  const today = new Date().toISOString().split('T')[0];
+  const today = dateInputInBrasilia();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
 

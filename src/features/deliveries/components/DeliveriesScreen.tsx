@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, MapPin, Navigation, Package, RefreshCw, Route, Truck, User } from 'lucide-react';
 import api from '@/shared/lib/api';
+import { formatBrasiliaDate } from '@/shared/lib/dateTime';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
@@ -325,7 +326,7 @@ export function DeliveriesScreen() {
                       {routeDate && (
                         <div className="flex items-center gap-1.5 text-xs text-gray-500">
                           <Clock className="w-3.5 h-3.5" />
-                          {new Date(routeDate).toLocaleDateString('pt-BR')} {new Date(routeDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          {formatBrasiliaDate(routeDate, { dateStyle: 'short', timeStyle: 'short' })}
                         </div>
                       )}
                     </div>

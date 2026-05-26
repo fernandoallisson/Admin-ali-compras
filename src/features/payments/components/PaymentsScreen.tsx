@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, CreditCard, Smartphone, Banknote, CheckCircle2, Clock, XCircle, RefreshCw } from 'lucide-react';
 import api from '@/shared/lib/api';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
+import { formatBrasiliaDate } from '@/shared/lib/dateTime';
 
 const PRIMARY = '#122a4c';
 
@@ -90,7 +91,7 @@ export function PaymentsScreen() {
           method: methodMapping[p.forma_pagamento] || 'Dinheiro',
           value: parseFloat(p.valor) || 0,
           status: statusMapping[p.status] || 'Pendente',
-          date: new Date(p.criado_em).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          date: formatBrasiliaDate(p.criado_em, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
         };
       });
 

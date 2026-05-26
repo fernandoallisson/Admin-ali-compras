@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Power, Ticket, X, Copy, Check } from 'lucide-react';
 import api from '@/shared/lib/api';
+import { dateInputInBrasilia, endOfBrasiliaDayInput, formatBrasiliaDate } from '@/shared/lib/dateTime';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
@@ -43,7 +44,7 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
         limite_uso_total: toNullableInteger(String(maxUse)),
         limite_uso_por_cliente: toNullableInteger(String(perCustomerUse)),
         valor_minimo_pedido: toNullableNumber(String(minOrder)),
-        expira_em: expires ? new Date(expires).toISOString() : null,
+        expira_em: endOfBrasiliaDayInput(expires),
         ativo: coupon ? coupon.raw_ativo : true,
       };
       
@@ -194,8 +195,8 @@ export function CouponsScreen() {
         let rawExpires = '';
         if (c.expira_em) {
            const d = new Date(c.expira_em);
-           expDate = d.toLocaleDateString('pt-BR');
-           rawExpires = d.toISOString().split('T')[0];
+           expDate = formatBrasiliaDate(d);
+           rawExpires = dateInputInBrasilia(d);
         }
 
         return {

@@ -11,14 +11,15 @@ import {
   type InternalNotification,
   type PushCampaign,
 } from '../services/notificationsService';
+import { formatBrasiliaDate, monthInBrasilia } from '@/shared/lib/dateTime';
 
 const PRIMARY = '#122a4c';
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('pt-BR', {
+  return formatBrasiliaDate(value, {
     dateStyle: 'short',
     timeStyle: 'short',
-  }).format(new Date(value));
+  });
 }
 
 const statusLabels: Record<string, string> = {
@@ -61,7 +62,7 @@ export function NotificationsScreen() {
     audience: 'all_customers' as CampaignAudience,
     min_orders: '3',
     min_total: '300',
-    month: String(new Date().getMonth() + 1),
+    month: monthInBrasilia(),
   });
 
   const setNotificationItems = (items: InternalNotification[]) => {
@@ -162,7 +163,7 @@ export function NotificationsScreen() {
         audience: 'all_customers',
         min_orders: '3',
         min_total: '300',
-        month: String(new Date().getMonth() + 1),
+        month: monthInBrasilia(),
       });
       if (campaign.total_devices === 0) {
         setFeedback('Histórico criado, mas nenhum cliente desta loja ativou notificações push.');

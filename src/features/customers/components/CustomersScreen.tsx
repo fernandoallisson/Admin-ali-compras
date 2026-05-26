@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Eye, X, Phone, Mail, MapPin, ShoppingBag, ArrowLeft, MessageCircle } from 'lucide-react';
 import api from '@/shared/lib/api';
+import { formatBrasiliaDate } from '@/shared/lib/dateTime';
 
 const PRIMARY = '#122a4c';
 
@@ -75,7 +76,7 @@ function CustomerDetail({ customer, onClose }: { customer: any; onClose: () => v
         <div className="flex-1">
           <h2 className="text-gray-900 font-semibold">{customer.nome}</h2>
           <div className="text-xs text-gray-400 mt-0.5">
-            Cliente desde {new Date(customer.criado_em).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}
+            Cliente desde {formatBrasiliaDate(customer.criado_em, { month: 'short', year: 'numeric' })}
           </div>
         </div>
         <button onClick={onClose} className="hidden lg:block text-gray-400 hover:text-gray-600">
@@ -125,7 +126,7 @@ function CustomerDetail({ customer, onClose }: { customer: any; onClose: () => v
                 <div key={order.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                   <div>
                     <div className="text-sm font-medium text-gray-700">#{order.id.split('-')[0]}</div>
-                    <div className="text-xs text-gray-400">{new Date(order.criado_em).toLocaleDateString('pt-BR')} · {order.tipo_pedido}</div>
+                    <div className="text-xs text-gray-400">{formatBrasiliaDate(order.criado_em)} · {order.tipo_pedido}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold text-gray-700">{formatCurrency(order.valor_total ?? order.total)}</div>

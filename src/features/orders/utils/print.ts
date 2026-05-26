@@ -1,4 +1,5 @@
 import { orderItemsMock, statusLabels } from '@/features/orders/constants';
+import { formatBrasiliaDate } from '@/shared/lib/dateTime';
 import {
   getOrderAddress,
   getOrderNeighborhood,
@@ -49,7 +50,7 @@ export const printComanda = (order: any, orderItems: any[] = orderItemsMock) => 
   <div class="center">
     <p class="bold large">COMANDA DE PEDIDO</p>
     <p>Pedido: <span class="bold">${order.numero_pedido || order.id}</span></p>
-    <p>Data: ${new Date(orderDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })} ${new Date(orderDate).toLocaleTimeString("pt-BR")}</p>
+    <p>Data: ${formatBrasiliaDate(orderDate, { dateStyle: "short", timeStyle: "medium" })}</p>
     <span class="tag">${(order.tipo_pedido || order.type || "").toUpperCase()}</span>
   </div>
   <div class="divider"></div>
@@ -126,7 +127,7 @@ export const printBairroRoute = (bairro: string, bairroOrders: any[]) => {
   <div class="divider-solid"></div>
   <div class="center">
     <p class="bold" style="font-size:13px">BAIRRO: ${bairro.toUpperCase()}</p>
-    <p>Data: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
+    <p>Data: ${formatBrasiliaDate(new Date(), { dateStyle: "short", timeStyle: "short" })}</p>
     <p>${bairroOrders.length} pedido${bairroOrders.length !== 1 ? "s" : ""} · R$ ${total.toFixed(2).replace(".", ",")}</p>
   </div>
   <div class="divider"></div>

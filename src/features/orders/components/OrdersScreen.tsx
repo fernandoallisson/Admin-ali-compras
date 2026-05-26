@@ -24,6 +24,7 @@ import {
   Loader2,
 } from "lucide-react";
 import api from '@/shared/lib/api';
+import { formatBrasiliaTime } from '@/shared/lib/dateTime';
 import {
   allStatuses,
   bairroColors,
@@ -416,25 +417,24 @@ export function OrdersScreen() {
   };
 
   const advanceStatus = async (id: string, currentStatus: string) => {
-    // Map current status to next status in backend format
+    const order =
+      selected?.id === id ? selected : orders.find((item) => item.id === id);
+    const orderType = (order?.tipo_pedido || order?.type || "").toLowerCase();
+    const isDeliveryOrder = orderType === "entrega";
     const backendStatusFlow = [
       "pendente",
       "confirmado",
       "em_separacao",
       "pronto",
-      "saiu_para_entrega",
+      ...(orderType === "retirada" ? [] : ["saiu_para_entrega"]),
       "entregue",
     ];
     const rawStatus = getBackendStatus(currentStatus);
-    let idx = backendStatusFlow.indexOf(rawStatus);
+    const idx = backendStatusFlow.indexOf(rawStatus);
 
     if (idx >= 0 && idx < backendStatusFlow.length - 1) {
       const nextStatus = backendStatusFlow[idx + 1];
       try {
-        const order =
-          selected?.id === id ? selected : orders.find((o) => o.id === id);
-        const isDeliveryOrder =
-          (order?.tipo_pedido || order?.type || "").toLowerCase() === "entrega";
         const nextIsDeliveryStatus =
           nextStatus === "saiu_para_entrega" || nextStatus === "entregue";
 
@@ -1025,15 +1025,12 @@ export function OrdersScreen() {
                         <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-gray-400 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            {new Date(
+                            {formatBrasiliaTime(
                               order.realizado_em ||
                                 order.criado_em ||
                                 order.created_at ||
                                 new Date(),
-                            ).toLocaleTimeString("pt-BR", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            )}
                           </span>
                           <span className="text-xs text-gray-400 flex items-center gap-1">
                             <CreditCard className="w-3 h-3" />
@@ -1417,15 +1414,12 @@ export function OrdersScreen() {
                 </span>
               </div>
               <div className="text-xs text-gray-400 mt-0.5">
-                {new Date(
+                {formatBrasiliaTime(
                   selected.realizado_em ||
                     selected.criado_em ||
                     selected.created_at ||
                     new Date(),
-                ).toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}{" "}
+                )}{" "}
                 ·{" "}
                 {(selected.tipo_pedido || selected.type || "").toUpperCase() ===
                 "ENTREGA"
@@ -1453,11 +1447,14 @@ export function OrdersScreen() {
             {/* Timeline */}
             <div className="bg-gray-50 rounded-xl p-4">
               <div className="flex items-center gap-1 overflow-x-auto pb-1">
-                {statusFlow.map((s, i) => {
+                {(String(selected.tipo_pedido || selected.type || "").toLowerCase() === "retirada"
+                  ? statusFlow.filter((status) => status !== "Saiu para Entrega")
+                  : statusFlow
+                ).map((s, i, visibleStatusFlow) => {
                   const currentDisplay = getStatusLabel(selected.status);
                   const curIdx =
-                    statusFlow.indexOf(currentDisplay) >= 0
-                      ? statusFlow.indexOf(currentDisplay)
+                    visibleStatusFlow.indexOf(currentDisplay) >= 0
+                      ? visibleStatusFlow.indexOf(currentDisplay)
                       : 0;
                   const done = i <= curIdx;
                   return (
@@ -1482,7 +1479,7 @@ export function OrdersScreen() {
                           {s}
                         </span>
                       </div>
-                      {i < statusFlow.length - 1 && (
+                      {i < visibleStatusFlow.length - 1 && (
                         <div
                           className="w-6 h-0.5 mb-3 flex-shrink-0"
                           style={{
@@ -1713,7 +1710,9 @@ export function OrdersScreen() {
                     {getStatusLabel(selected.status) === "Em Separação" &&
                       "Marcar como Pronto"}
                     {getStatusLabel(selected.status) === "Pronto" &&
-                      "Enviar para Entrega"}
+                      ((selected.tipo_pedido || selected.type || "").toLowerCase() === "retirada"
+                        ? "Confirmar Retirada"
+                        : "Enviar para Entrega")}
                     {getStatusLabel(selected.status) === "Saiu para Entrega" &&
                       "Confirmar Entrega"}
                   </button>
