@@ -68,8 +68,3 @@ export const frontendToBackendStatus: Record<string, string | undefined> = {
   Entregue: "entregue",
   Cancelado: "cancelado",
 };
-
-export const orderItemsMock = [
-  { name: "Arroz Camil 1kg", qty: 2, price: 8.49, obs: "" },
-  { name: "Leite Italac 1L", qty: 4, price: 4.89, obs: "" },
-];

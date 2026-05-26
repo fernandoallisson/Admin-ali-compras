@@ -29,7 +29,6 @@ import {
   allStatuses,
   bairroColors,
   frontendToBackendStatus,
-  orderItemsMock,
   PRIMARY,
   statusColor,
   statusFlow,
@@ -42,6 +41,9 @@ import {
   getApiList,
   getBackendStatus,
   getOrderAddress,
+  getOrderItemName,
+  getOrderItemQuantity,
+  getOrderItemTotal,
   getOrderNeighborhood,
   getOrderPaymentMethod,
   getOrderPaymentStatus,
@@ -50,6 +52,7 @@ import {
   isDeliveryOrder,
 } from '@/features/orders/utils/orderUtils';
 import { DeliveryAssignmentModal } from '@/features/orders/components/DeliveryAssignmentModal';
+import { OrderItemsChecklistModal } from '@/features/orders/components/OrderItemsChecklistModal';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 
 export function OrdersScreen() {
@@ -62,7 +65,12 @@ export function OrdersScreen() {
   const [bairroFilter, setBairroFilter] = useState("Todos");
   const [selected, setSelected] = useState<any | null>(null);
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
+  const [selectedItemsLoading, setSelectedItemsLoading] = useState(false);
   const [selectedPayments, setSelectedPayments] = useState<any[]>([]);
+  const [checklistOrder, setChecklistOrder] = useState<any | null>(null);
+  const [checklistItems, setChecklistItems] = useState<any[]>([]);
+  const [checklistLoading, setChecklistLoading] = useState(false);
+  const [checklistError, setChecklistError] = useState("");
   const [viewMode, setViewMode] = useState<"lista" | "bairros">("lista");
   const [expandedBairros, setExpandedBairros] = useState<
     Record<string, boolean>
@@ -207,23 +215,32 @@ export function OrdersScreen() {
     fetchOrders(page + 1);
   };
 
+  const loadOrderItems = async (orderId: string) => {
+    try {
+      const response = await api.get(`/pedidos/${orderId}/itens`);
+      return getApiList(response.data);
+    } catch (error) {
+      console.error("Error fetching order items by order endpoint:", error);
+      try {
+        const response = await api.get("/itens_pedido", {
+          params: { pedido_id: orderId },
+        });
+        return getApiList(response.data);
+      } catch (fallbackError) {
+        console.error("Error fetching order items fallback:", fallbackError);
+        throw fallbackError;
+      }
+    }
+  };
+
   const fetchOrderItems = async (orderId: string) => {
     try {
-      const response = await api.get("/itens_pedido", {
-        params: { pedido_id: orderId },
-      });
-      const rawItems = response.data.data ?? response.data;
-      setSelectedItems(Array.isArray(rawItems) ? rawItems : []);
-    } catch (error) {
-      console.error("Error fetching order items:", error);
-      // fallback
-      try {
-        const resp2 = await api.get(`/pedidos/${orderId}/itens`);
-        const rawItems2 = resp2.data.data ?? resp2.data;
-        setSelectedItems(Array.isArray(rawItems2) ? rawItems2 : []);
-      } catch (err2) {
-        setSelectedItems(Array.isArray(orderItemsMock) ? orderItemsMock : []);
-      }
+      setSelectedItemsLoading(true);
+      setSelectedItems(await loadOrderItems(orderId));
+    } catch {
+      setSelectedItems([]);
+    } finally {
+      setSelectedItemsLoading(false);
     }
   };
 
@@ -276,6 +293,43 @@ export function OrdersScreen() {
     fetchOrderPayments(order.id);
     if ((order.tipo_pedido || order.type || "").toLowerCase() === "entrega") {
       fetchOrderDelivery(order.id);
+    }
+  };
+
+  const handlePrintComanda = async (order: any) => {
+    const printWindow = window.open("", "_blank", "width=420,height=650");
+    if (!printWindow) {
+      showSystemNotice(
+        "O navegador bloqueou a janela de impressão. Permita pop-ups e tente novamente.",
+      );
+      return;
+    }
+
+    try {
+      const items = await loadOrderItems(order.id);
+      const orderPayment =
+        selected?.id === order.id ? selectedPayments[0] || order.pagamento : order.pagamento;
+      printComanda({ ...order, pagamento: orderPayment }, items, printWindow);
+    } catch {
+      printWindow.close();
+      showSystemNotice(
+        "Não foi possível carregar os produtos deste pedido para impressão.",
+      );
+    }
+  };
+
+  const openItemsChecklist = async (order: any) => {
+    setChecklistOrder(order);
+    setChecklistItems([]);
+    setChecklistError("");
+    setChecklistLoading(true);
+
+    try {
+      setChecklistItems(await loadOrderItems(order.id));
+    } catch {
+      setChecklistError("Não foi possível carregar os produtos deste pedido.");
+    } finally {
+      setChecklistLoading(false);
     }
   };
 
@@ -1332,12 +1386,22 @@ export function OrdersScreen() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    printComanda(order);
+                                    handlePrintComanda(order);
                                   }}
                                   className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors"
                                   title="Imprimir comanda"
                                 >
                                   <Printer className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openItemsChecklist(order);
+                                  }}
+                                  className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors"
+                                  title="Ver produtos"
+                                >
+                                  <Package className="w-3 h-3" />
                                 </button>
                                 <button
                                   onClick={(e) => {
@@ -1378,6 +1442,16 @@ export function OrdersScreen() {
           onSelectRoute={setSelectedRouteId}
           onConfirmStepChange={setConfirmStep}
           onConfirm={handleConfirmDeliveryAssignment}
+        />
+      )}
+
+      {checklistOrder && (
+        <OrderItemsChecklistModal
+          order={checklistOrder}
+          items={checklistItems}
+          loading={checklistLoading}
+          error={checklistError}
+          onClose={() => setChecklistOrder(null)}
         />
       )}
 
@@ -1428,12 +1502,20 @@ export function OrdersScreen() {
               </div>
             </div>
             <button
-              onClick={() => printComanda(selectedForPrint, selectedItems)}
+              onClick={() => handlePrintComanda(selectedForPrint)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
               title="Imprimir comanda"
             >
               <Printer className="w-4 h-4" />
               <span className="hidden sm:inline text-xs">Imprimir</span>
+            </button>
+            <button
+              onClick={() => openItemsChecklist(selected)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              title="Ver produtos"
+            >
+              <Package className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs">Ver produtos</span>
             </button>
             <button
               onClick={() => setSelected(null)}
@@ -1545,16 +1627,23 @@ export function OrdersScreen() {
                 do Pedido
               </h4>
               <div className="space-y-2.5">
-                {Array.isArray(selectedItems) &&
+                {selectedItemsLoading && (
+                  <p className="text-sm text-gray-500">Carregando produtos...</p>
+                )}
+                {!selectedItemsLoading && selectedItems.length === 0 && (
+                  <p className="text-sm text-gray-500">
+                    Nenhum produto encontrado para este pedido.
+                  </p>
+                )}
+                {!selectedItemsLoading &&
                   selectedItems.map((item: any, idx: number) => (
                     <div
-                      key={idx}
+                      key={item.id || idx}
                       className="flex items-center justify-between"
                     >
                       <div>
                         <div className="text-sm text-gray-700">
-                          {item.quantity || item.qty}x{" "}
-                          {item.produto?.nome || item.name}
+                          {getOrderItemQuantity(item)}x {getOrderItemName(item)}
                         </div>
                         {(item.observacoes || item.obs) && (
                           <div className="text-xs text-gray-400 italic mt-0.5">
@@ -1564,10 +1653,7 @@ export function OrdersScreen() {
                       </div>
                       <div className="text-sm font-medium text-gray-700">
                         R${" "}
-                        {(
-                          (item.price_unit || item.price) *
-                          (item.quantity || item.qty)
-                        )
+                        {getOrderItemTotal(item)
                           .toFixed(2)
                           .replace(".", ",")}
                       </div>
@@ -1718,10 +1804,16 @@ export function OrdersScreen() {
                   </button>
                 )}
               <button
-                onClick={() => printComanda(selected, selectedItems)}
+                onClick={() => handlePrintComanda(selectedForPrint)}
                 className="w-full py-2.5 rounded-lg text-gray-700 text-sm font-medium border border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
               >
                 <Printer className="w-4 h-4" /> Imprimir Comanda
+              </button>
+              <button
+                onClick={() => openItemsChecklist(selected)}
+                className="w-full py-2.5 rounded-lg text-gray-700 text-sm font-medium border border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <Package className="w-4 h-4" /> Ver produtos
               </button>
               {getStatusLabel(selected.status) !== "Cancelado" &&
                 getStatusLabel(selected.status) !== "Entregue" && (

@@ -29,6 +29,38 @@ export const firstText = (...values: unknown[]) => {
   return "";
 };
 
+const toNumber = (value: unknown) => {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : 0;
+};
+
+export const getOrderItemName = (item: any) => {
+  const name =
+    firstText(item?.nome_produto, item?.produto?.nome, item?.name) ||
+    "Produto não informado";
+  const variation = firstText(item?.nome_variacao);
+
+  return variation ? `${name} - ${variation}` : name;
+};
+
+export const getOrderItemQuantity = (item: any) =>
+  toNumber(item?.quantidade ?? item?.quantity ?? item?.qty);
+
+export const getOrderItemUnitPrice = (item: any) =>
+  toNumber(item?.preco_unitario ?? item?.price_unit ?? item?.price);
+
+export const getOrderItemTotal = (item: any) => {
+  const recordedTotal = item?.preco_total;
+  if (recordedTotal !== null && recordedTotal !== undefined) {
+    return toNumber(recordedTotal);
+  }
+
+  return getOrderItemUnitPrice(item) * getOrderItemQuantity(item);
+};
+
+export const getOrderItemChecklistId = (item: any, index: number) =>
+  String(item?.id || item?.produto_id || `${getOrderItemName(item)}-${index}`);
+
 export const extractBairro = (address: string) => {
   const text = cleanText(address);
   if (!text) return "Não informado";

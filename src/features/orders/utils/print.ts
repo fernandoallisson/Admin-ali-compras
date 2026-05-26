@@ -1,29 +1,49 @@
-import { orderItemsMock, statusLabels } from '@/features/orders/constants';
+import { statusLabels } from '@/features/orders/constants';
 import { formatBrasiliaDate } from '@/shared/lib/dateTime';
 import {
+  getOrderItemName,
+  getOrderItemQuantity,
+  getOrderItemTotal,
   getOrderAddress,
   getOrderNeighborhood,
   getOrderPaymentMethod,
   getOrderStreetAddress,
+  isDeliveryOrder,
 } from '@/features/orders/utils/orderUtils';
 
-export const printComanda = (order: any, orderItems: any[] = orderItemsMock) => {
+const escapeHtml = (value: unknown) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const formatMoney = (value: unknown) => {
+  const number = typeof value === "number" ? value : Number(value);
+  return (Number.isFinite(number) ? number : 0).toFixed(2).replace(".", ",");
+};
+
+export const printComanda = (
+  order: any,
+  orderItems: any[] = [],
+  targetWindow?: Window | null,
+) => {
   const subtotal = orderItems.reduce(
-    (a, i) => a + (i.price_unit * i.quantity || i.price * i.qty),
+    (value, item) => value + getOrderItemTotal(item),
     0,
   );
-  const delivery =
-    order.type === "Entrega" || order.tipo_pedido === "entrega"
-      ? order.taxa_entrega || 6.99
-      : 0;
-  const total = order.total || order.valor_total || 0;
+  const delivery = isDeliveryOrder(order) ? order.taxa_entrega || 6.99 : 0;
+  const total = order.total ?? order.valor_total ?? 0;
   const orderDate = order.realizado_em || order.criado_em || order.created_at || new Date();
+  const orderNumber = escapeHtml(order.numero_pedido || order.id);
+  const isDelivery = isDeliveryOrder(order);
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Comanda ${order.numero_pedido || order.id}</title>
+  <title>Comanda ${orderNumber}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Courier New', Courier, monospace; max-width: 300px; margin: 0 auto; padding: 16px; font-size: 12px; color: #000; }
@@ -49,36 +69,36 @@ export const printComanda = (order: any, orderItems: any[] = orderItemsMock) => 
   <div class="divider-solid"></div>
   <div class="center">
     <p class="bold large">COMANDA DE PEDIDO</p>
-    <p>Pedido: <span class="bold">${order.numero_pedido || order.id}</span></p>
-    <p>Data: ${formatBrasiliaDate(orderDate, { dateStyle: "short", timeStyle: "medium" })}</p>
-    <span class="tag">${(order.tipo_pedido || order.type || "").toUpperCase()}</span>
+    <p>Pedido: <span class="bold">${orderNumber}</span></p>
+    <p>Data: ${escapeHtml(formatBrasiliaDate(orderDate, { dateStyle: "short", timeStyle: "medium" }))}</p>
+    <span class="tag">${escapeHtml((order.tipo_pedido || order.type || "").toUpperCase())}</span>
   </div>
   <div class="divider"></div>
-  <p><span class="bold">Cliente:</span> ${order.cliente?.nome || order.customer || "Não informado"}</p>
-  <p><span class="bold">Telefone:</span> ${order.cliente?.telefone || order.phone || "Não informado"}</p>
-  ${order.cpf_na_nota ? `<p><span class="bold">CPF na nota:</span> ${order.cpf_na_nota_cpf || "Informado"}</p>` : ""}
-  ${order.type === "Entrega" || order.tipo_pedido === "entrega" ? `<p><span class="bold">Endereço:</span> ${getOrderAddress(order)}</p><p><span class="bold">Bairro:</span> ${getOrderNeighborhood(order)}</p>` : ""}
+  <p><span class="bold">Cliente:</span> ${escapeHtml(order.cliente?.nome || order.customer || "Não informado")}</p>
+  <p><span class="bold">Telefone:</span> ${escapeHtml(order.cliente?.telefone || order.phone || "Não informado")}</p>
+  ${order.cpf_na_nota ? `<p><span class="bold">CPF na nota:</span> ${escapeHtml(order.cpf_na_nota_cpf || "Informado")}</p>` : ""}
+  ${isDelivery ? `<p><span class="bold">Endereço:</span> ${escapeHtml(getOrderAddress(order))}</p><p><span class="bold">Bairro:</span> ${escapeHtml(getOrderNeighborhood(order))}</p>` : ""}
   <div class="divider"></div>
   <p class="bold" style="margin-bottom:6px">ITENS DO PEDIDO:</p>
   ${(Array.isArray(orderItems) ? orderItems : [])
     .map(
       (i) => `
     <div class="row">
-      <span>${i.quantity || i.qty}x ${i.produto?.nome || i.name}</span>
-      <span>R$ ${((i.price_unit || i.price) * (i.quantity || i.qty)).toFixed(2).replace(".", ",")}</span>
+      <span>${escapeHtml(getOrderItemQuantity(i))}x ${escapeHtml(getOrderItemName(i))}</span>
+      <span>R$ ${formatMoney(getOrderItemTotal(i))}</span>
     </div>
-    ${i.observacoes || i.obs ? `<p class="obs">Obs: ${i.observacoes || i.obs}</p>` : ""}
+    ${i.observacoes || i.obs ? `<p class="obs">Obs: ${escapeHtml(i.observacoes || i.obs)}</p>` : ""}
   `,
     )
     .join("")}
   <div class="divider"></div>
-  <div class="row"><span>Subtotal</span><span>R$ ${subtotal.toFixed(2).replace(".", ",")}</span></div>
-  ${order.type === "Entrega" || order.tipo_pedido === "entrega" ? `<div class="row"><span>Taxa de entrega</span><span>R$ ${delivery.toFixed(2).replace(".", ",")}</span></div>` : '<div class="row"><span>Retirada na loja</span><span>Grátis</span></div>'}
-  <div class="row"><span>Desconto</span><span>R$ ${(order.desconto || 0).toFixed(2).replace(".", ",")}</span></div>
+  <div class="row"><span>Subtotal</span><span>R$ ${formatMoney(orderItems.length > 0 ? subtotal : order.subtotal)}</span></div>
+  ${isDelivery ? `<div class="row"><span>Taxa de entrega</span><span>R$ ${formatMoney(delivery)}</span></div>` : '<div class="row"><span>Retirada na loja</span><span>Grátis</span></div>'}
+  <div class="row"><span>Desconto</span><span>R$ ${formatMoney(order.desconto)}</span></div>
   <div class="divider-solid"></div>
-  <div class="row-total"><span>TOTAL A PAGAR</span><span>R$ ${parseFloat(total).toFixed(2).replace(".", ",")}</span></div>
+  <div class="row-total"><span>TOTAL A PAGAR</span><span>R$ ${formatMoney(total)}</span></div>
   <div class="divider"></div>
-  <p><span class="bold">Pagamento:</span> ${getOrderPaymentMethod(order, order.pagamento)}</p>
+  <p><span class="bold">Pagamento:</span> ${escapeHtml(getOrderPaymentMethod(order, order.pagamento))}</p>
   <div class="divider-solid"></div>
   <div class="center" style="margin-top: 8px;">
     <p>Obrigado pela preferência!</p>
@@ -89,7 +109,7 @@ export const printComanda = (order: any, orderItems: any[] = orderItemsMock) => 
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=420,height=650");
+  const win = targetWindow || window.open("", "_blank", "width=420,height=650");
   if (win) {
     win.document.write(html);
     win.document.close();
