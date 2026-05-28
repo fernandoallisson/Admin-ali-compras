@@ -11,6 +11,8 @@ import {
   type InternalNotification,
   type PushCampaign,
 } from '../services/notificationsService';
+import { bannersService } from '@/features/banners';
+import type { Banner, BannerPageKey } from '@/features/banners/types/banner';
 import { formatBrasiliaDate, monthInBrasilia } from '@/shared/lib/dateTime';
 
 const PRIMARY = '#122a4c';
@@ -44,11 +46,14 @@ const audienceLabel = (audience: CampaignAudience) => (
   audienceOptions.find((option) => option.value === audience)?.label || audience
 );
 
+const BANNER_DEEP_LINK_OPTION = '__banner__';
+
 const deepLinkOptions = [
+  { value: '/', label: 'Entrar no app' },
+  { value: BANNER_DEEP_LINK_OPTION, label: 'Banner específico' },
   { value: '/promocoes', label: 'Promoções' },
-  { value: '/banners', label: 'Banners' },
   { value: '/ofertas', label: 'Ofertas' },
-  { value: '/categorias', label: 'Categorias' },
+  { value: '/categories', label: 'Categorias' },
   { value: '/carrinho', label: 'Carrinho' },
   { value: '/orders', label: 'Meus pedidos' },
   { value: '/notifications', label: 'Notificações' },
@@ -56,21 +61,50 @@ const deepLinkOptions = [
   { value: '/support', label: 'Suporte' },
 ];
 
+const bannerPageLabels: Record<BannerPageKey, string> = {
+  home: 'Início',
+  products: 'Produtos',
+  categories: 'Categorias',
+  cart: 'Carrinho',
+  checkout: 'Checkout',
+  payment: 'Pagamento',
+  order_confirmed: 'Pedido confirmado',
+  profile: 'Perfil',
+  notifications: 'Notificações',
+  support: 'Suporte',
+};
+
+const bannerDeepLink = (bannerId: string) => `/produtos?banner=${encodeURIComponent(bannerId)}`;
+
+function isBannerAvailable(banner: Banner) {
+  if (!banner.ativo) return false;
+
+  const now = Date.now();
+  const startsAt = banner.inicia_em ? new Date(banner.inicia_em).getTime() : null;
+  const expiresAt = banner.expira_em ? new Date(banner.expira_em).getTime() : null;
+
+  return (!startsAt || startsAt <= now) && (!expiresAt || expiresAt >= now);
+}
+
 export function NotificationsScreen() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<'history' | 'campaigns'>('history');
   const [notifications, setNotifications] = useState<InternalNotification[]>([]);
   const [campaigns, setCampaigns] = useState<PushCampaign[]>([]);
+  const [banners, setBanners] = useState<Banner[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [loadingBanners, setLoadingBanners] = useState(false);
   const [campaignsLoaded, setCampaignsLoaded] = useState(false);
+  const [bannersLoaded, setBannersLoaded] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     title: '',
     body: '',
     image_url: '',
-    deep_link: '/promocoes',
+    deep_link: '/',
+    banner_id: '',
     audience: 'all_customers' as CampaignAudience,
     min_orders: '3',
     min_total: '300',
@@ -107,6 +141,18 @@ export function NotificationsScreen() {
     }
   };
 
+  const loadBanners = async () => {
+    setLoadingBanners(true);
+    try {
+      setBanners(await bannersService.getBanners());
+      setBannersLoaded(true);
+    } catch (error: any) {
+      setFeedback(error?.response?.data?.message || 'Não foi possível carregar banners.');
+    } finally {
+      setLoadingBanners(false);
+    }
+  };
+
   useEffect(() => {
     void loadHistory();
     const refresh = () => void loadHistory();
@@ -118,9 +164,16 @@ export function NotificationsScreen() {
     if (tab === 'campaigns' && !campaignsLoaded && !loadingCampaigns) {
       void loadCampaigns();
     }
-  }, [tab, campaignsLoaded, loadingCampaigns]);
+    if (tab === 'campaigns' && !bannersLoaded && !loadingBanners) {
+      void loadBanners();
+    }
+  }, [tab, campaignsLoaded, loadingCampaigns, bannersLoaded, loadingBanners]);
 
   const unread = useMemo(() => notifications.filter((item) => !item.read_at).length, [notifications]);
+  const availableBanners = useMemo(
+    () => banners.filter(isBannerAvailable).sort((a, b) => a.prioridade - b.prioridade || a.titulo.localeCompare(b.titulo)),
+    [banners],
+  );
 
   const markRead = async (notification: InternalNotification) => {
     if (!notification.read_at) {
@@ -159,11 +212,21 @@ export function NotificationsScreen() {
           : form.audience === 'birthday_month'
             ? { month: Number(form.month) }
             : {};
+      const usesBannerDeepLink = form.deep_link === BANNER_DEEP_LINK_OPTION;
+      const selectedBanner = usesBannerDeepLink && form.banner_id
+        ? availableBanners.find((banner) => banner.id === form.banner_id)
+        : null;
+
+      if (usesBannerDeepLink && !selectedBanner) {
+        setFeedback('Selecione um banner disponível para vincular à campanha.');
+        return;
+      }
+
       const campaign = await createCampaign({
         title: form.title,
         body: form.body,
         image_url: form.image_url || null,
-        deep_link: form.deep_link || null,
+        deep_link: selectedBanner ? bannerDeepLink(selectedBanner.id) : form.deep_link,
         audience: form.audience,
         audience_config: audienceConfig,
       });
@@ -171,7 +234,8 @@ export function NotificationsScreen() {
         title: '',
         body: '',
         image_url: '',
-        deep_link: '/promocoes',
+        deep_link: '/',
+        banner_id: '',
         audience: 'all_customers',
         min_orders: '3',
         min_total: '300',
@@ -259,10 +323,42 @@ export function NotificationsScreen() {
             <input type="url" placeholder="URL de imagem (opcional)" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
             <label className="block text-xs font-medium text-gray-700">
               Caminho ao tocar na notificação
-              <select value={form.deep_link} onChange={(e) => setForm({ ...form, deep_link: e.target.value })} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white">
+              <select
+                value={form.deep_link}
+                onChange={(e) => setForm({
+                  ...form,
+                  deep_link: e.target.value,
+                  banner_id: e.target.value === BANNER_DEEP_LINK_OPTION ? form.banner_id : '',
+                })}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
+              >
                 {deepLinkOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
+            {form.deep_link === BANNER_DEEP_LINK_OPTION && (
+              <label className="block text-xs font-medium text-gray-700">
+                Banner específico ao tocar
+                <select
+                  value={form.banner_id}
+                  onChange={(e) => setForm({ ...form, banner_id: e.target.value })}
+                  disabled={loadingBanners || availableBanners.length === 0}
+                  required
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white disabled:bg-gray-50 disabled:text-gray-400"
+                >
+                  <option value="">
+                    {loadingBanners ? 'Carregando banners...' : 'Selecione um banner'}
+                  </option>
+                  {availableBanners.map((banner) => (
+                    <option key={banner.id} value={banner.id}>
+                      {banner.titulo} · {bannerPageLabels[banner.page_key] || banner.page_key}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] text-gray-500">
+                  A notificação abre a coleção de produtos desse banner no app.
+                </span>
+              </label>
+            )}
             <label className="block text-xs font-medium text-gray-700">
               Segmentação
               <select value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value as CampaignAudience })} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white">
