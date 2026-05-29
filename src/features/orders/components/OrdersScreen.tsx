@@ -612,6 +612,12 @@ export function OrdersScreen() {
   };
 
   const getStatusLabel = (status: string) => statusLabels[status] || status;
+  const getDeliveryFailureReason = (order: any) =>
+    (currentDelivery?.pedido_id === order?.id ? currentDelivery?.observacoes : "") ||
+    deliveryByOrderId.get(order?.id)?.observacoes ||
+    order?.entrega?.observacoes ||
+    order?.delivery_failure_reason ||
+    "";
 
   const filtered = orders.filter((o) => {
     const customerName = (o.cliente?.nome || o.customer || "").toLowerCase();
@@ -700,7 +706,7 @@ export function OrdersScreen() {
             title: "Em andamento",
             description: "Pedidos que ainda exigem ação",
             orders: filtered.filter(
-              (order) => !["entregue", "cancelado"].includes(order.status),
+              (order) => !["entregue", "nao_entregue", "cancelado"].includes(order.status),
             ),
           },
           {
@@ -708,6 +714,12 @@ export function OrdersScreen() {
             title: "Entregues aguardando pagamento",
             description: "Finalizados que ainda não podem ser arquivados",
             orders: filtered.filter((order) => order.status === "entregue"),
+          },
+          {
+            key: "nao_entregues",
+            title: "Não entregues",
+            description: "Pedidos com problema relatado pelo entregador",
+            orders: filtered.filter((order) => order.status === "nao_entregue"),
           },
           {
             key: "cancelados",
@@ -773,7 +785,7 @@ export function OrdersScreen() {
     const activeOrders = uniqueOrders.filter(
       (order) =>
         !assignedOrderIds.has(order.id) &&
-        !["entregue", "cancelado", "Entregue", "Cancelado"].includes(
+        !["entregue", "nao_entregue", "cancelado", "Entregue", "Não entregue", "Cancelado"].includes(
           order.status,
         ),
     );
@@ -1119,9 +1131,10 @@ export function OrdersScreen() {
               const canSelectForDelivery =
                 isEntrega &&
                 !assignedOrderIds.has(order.id) &&
-                !["entregue", "cancelado"].includes(order.status);
+                !["entregue", "nao_entregue", "cancelado"].includes(order.status);
               const isSelectedForDelivery = selectedOrderIds.includes(order.id);
               const assignedDelivery = deliveryByOrderId.get(order.id);
+              const failureReason = getDeliveryFailureReason(order);
               const rowBgClass = isSelectedForDelivery
                 ? ""
                 : orderIndex % 2 === 0
@@ -1208,6 +1221,11 @@ export function OrdersScreen() {
                             order.customer ||
                             "Desconhecido"}
                         </div>
+                        {order.status === "nao_entregue" && (
+                          <div className="mt-1 rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                            Problema na entrega{failureReason ? `: ${failureReason}` : ""}
+                          </div>
+                        )}
                         <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-gray-400 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
@@ -1304,7 +1322,7 @@ export function OrdersScreen() {
               const isExpanded = expandedBairros[bairro] !== false; // expanded by default
               const activeOrders = group.orders.filter(
                 (o) =>
-                  !["entregue", "cancelado", "Entregue", "Cancelado"].includes(
+                  !["entregue", "nao_entregue", "cancelado", "Entregue", "Não entregue", "Cancelado"].includes(
                     o.status,
                   ),
               );
@@ -1428,10 +1446,11 @@ export function OrdersScreen() {
                           };
                         const canSelectForDelivery =
                           !assignedOrderIds.has(order.id) &&
-                          !["entregue", "cancelado"].includes(order.status);
+                          !["entregue", "nao_entregue", "cancelado"].includes(order.status);
                         const isSelectedForDelivery = selectedOrderIds.includes(
                           order.id,
                         );
+                        const failureReason = getDeliveryFailureReason(order);
                         return (
                           <div
                             key={order.id}
@@ -1500,6 +1519,11 @@ export function OrdersScreen() {
                               <div className="text-xs text-gray-600 mt-0.5 truncate">
                                 {order.cliente?.nome || order.customer}
                               </div>
+                              {order.status === "nao_entregue" && (
+                                <div className="mt-1 rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                                  Problema na entrega{failureReason ? `: ${failureReason}` : ""}
+                                </div>
+                              )}
                               <div className="text-xs text-gray-400 mt-0.5 truncate">
                                 {getOrderStreetAddress(order)}
                               </div>
@@ -1679,10 +1703,18 @@ export function OrdersScreen() {
                   : statusFlow
                 ).map((s, i, visibleStatusFlow) => {
                   const currentDisplay = getStatusLabel(selected.status);
+                  const currentFlowIndex = visibleStatusFlow.indexOf(currentDisplay);
+                  const failedFlowIndex = Math.max(
+                    visibleStatusFlow.indexOf("Saiu para Entrega"),
+                    visibleStatusFlow.indexOf("Pronto"),
+                    0,
+                  );
                   const curIdx =
-                    visibleStatusFlow.indexOf(currentDisplay) >= 0
-                      ? visibleStatusFlow.indexOf(currentDisplay)
-                      : 0;
+                    selected.status === "nao_entregue"
+                      ? failedFlowIndex
+                      : currentFlowIndex >= 0
+                        ? currentFlowIndex
+                        : 0;
                   const done = i <= curIdx;
                   return (
                     <div
@@ -1719,6 +1751,18 @@ export function OrdersScreen() {
                 })}
               </div>
             </div>
+
+            {selected.status === "nao_entregue" && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                <h4 className="mb-1 text-sm font-semibold text-red-800">
+                  Pedido não entregue
+                </h4>
+                <p className="text-sm text-red-700">
+                  Problema relatado pelo entregador
+                  {getDeliveryFailureReason(selected) ? `: ${getDeliveryFailureReason(selected)}` : "."}
+                </p>
+              </div>
+            )}
 
             {/* Customer info */}
             <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -1928,6 +1972,7 @@ export function OrdersScreen() {
             <div className="space-y-2">
               {getStatusLabel(selected.status) !== "Entregue" &&
                 getStatusLabel(selected.status) !== "Cancelado" &&
+                getStatusLabel(selected.status) !== "Não entregue" &&
                 !adminCannotDispatchDelivery && (
                   <button
                     onClick={() =>

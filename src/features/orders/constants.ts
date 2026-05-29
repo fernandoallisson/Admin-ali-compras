@@ -13,6 +13,8 @@ export const statusColor: Record<string, { bg: string; text: string }> = {
   saiu_para_entrega: { bg: "#fff7ed", text: "#ea580c" },
   Entregue: { bg: "#f0fdf4", text: "#16a34a" },
   entregue: { bg: "#f0fdf4", text: "#16a34a" },
+  "Não entregue": { bg: "#fef2f2", text: "#dc2626" },
+  nao_entregue: { bg: "#fef2f2", text: "#dc2626" },
   Cancelado: { bg: "#fef2f2", text: "#dc2626" },
   cancelado: { bg: "#fef2f2", text: "#dc2626" },
 };
@@ -24,6 +26,7 @@ export const statusLabels: Record<string, string> = {
   pronto: "Pronto",
   saiu_para_entrega: "Saiu para Entrega",
   entregue: "Entregue",
+  nao_entregue: "Não entregue",
   cancelado: "Cancelado",
 };
 
@@ -46,6 +49,7 @@ export const allStatuses = [
   "Pronto",
   "Saiu para Entrega",
   "Entregue",
+  "Não entregue",
   "Cancelado",
 ];
 
@@ -66,5 +70,6 @@ export const frontendToBackendStatus: Record<string, string | undefined> = {
   Pronto: "pronto",
   "Saiu para Entrega": "saiu_para_entrega",
   Entregue: "entregue",
+  "Não entregue": "nao_entregue",
   Cancelado: "cancelado",
 };
