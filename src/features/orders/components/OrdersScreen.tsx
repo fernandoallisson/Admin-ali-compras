@@ -71,6 +71,16 @@ const buildWhatsappUrl = (phone: any, message: string) => {
   return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
 };
 
+const getOrderCustomerPhone = (order: any) =>
+  order?.cliente?.telefone ||
+  order?.cliente?.celular ||
+  order?.cliente?.phone ||
+  order?.telefone_cliente ||
+  order?.customer_phone ||
+  order?.customerPhone ||
+  order?.phone ||
+  "";
+
 const getOrderCreatedAt = (order: any) =>
   order?.criado_em || order?.created_at || order?.realizado_em || null;
 
@@ -781,10 +791,15 @@ export function OrdersScreen() {
   const selectedIsDelivery = String(selected?.tipo_pedido || selected?.type || "").toLowerCase() === "entrega";
   const selectedStatusLabel = selected ? getStatusLabel(selected.status) : "";
   const adminCannotDispatchDelivery = selectedIsDelivery && selectedStatusLabel === "Pronto";
-  const selectedMarketWhatsappUrl = selected
+  const selectedCustomerName = selected?.cliente?.nome || selected?.customer || "";
+  const selectedOrderNumber = selected?.numero_pedido || String(selected?.id || "").slice(0, 8);
+  const selectedCustomerWhatsappMessage = selectedCustomerName
+    ? `Olá, ${selectedCustomerName}! Sobre o pedido #${selectedOrderNumber}, vimos que ele consta como não entregue. Podemos combinar os próximos passos?`
+    : `Olá! Sobre o pedido #${selectedOrderNumber}, vimos que ele consta como não entregue. Podemos combinar os próximos passos?`;
+  const selectedCustomerWhatsappUrl = selected
     ? buildWhatsappUrl(
-        storePrintData?.whatsapp_suporte || storePrintData?.telefone,
-        `Olá! Preciso de ajuda com o pedido #${selected.numero_pedido || String(selected.id || "").slice(0, 8)}, que consta como não entregue.`,
+        getOrderCustomerPhone(selected),
+        selectedCustomerWhatsappMessage,
       )
     : null;
   const listGroups =
@@ -1882,21 +1897,21 @@ export function OrdersScreen() {
                   {getDeliveryFailureReason(selected) ? `: ${getDeliveryFailureReason(selected)}` : "."}
                 </p>
                 <p className="mt-2 text-sm font-medium text-red-800">
-                  Oriente o cliente a entrar em contato com o WhatsApp do mercado para combinar os próximos passos.
+                  Entre em contato com o cliente pelo WhatsApp para combinar os próximos passos.
                 </p>
-                {selectedMarketWhatsappUrl ? (
+                {selectedCustomerWhatsappUrl ? (
                   <a
-                    href={selectedMarketWhatsappUrl}
+                    href={selectedCustomerWhatsappUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 sm:w-auto"
                   >
                     <MessageCircle className="h-4 w-4" />
-                    Abrir WhatsApp do mercado
+                    Abrir WhatsApp do cliente
                   </a>
                 ) : (
                   <div className="mt-3 rounded-lg border border-red-200 bg-white/70 px-3 py-2 text-sm font-medium text-red-800">
-                    WhatsApp do mercado não configurado.
+                    Cliente sem telefone cadastrado.
                   </div>
                 )}
               </div>
@@ -1914,9 +1929,7 @@ export function OrdersScreen() {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Phone className="w-3.5 h-3.5" />
-                  {selected.cliente?.telefone ||
-                    selected.phone ||
-                    "Sem telefone"}
+                  {getOrderCustomerPhone(selected) || "Sem telefone"}
                 </div>
                 {selected.cpf_na_nota && (
                   <div className="text-sm text-gray-500">
