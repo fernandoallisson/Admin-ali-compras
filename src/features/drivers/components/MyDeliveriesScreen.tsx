@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type TouchEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { AlertTriangle, ChevronRight, Clock, Inbox, Loader2, MapPin, Package, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Inbox, Loader2, MapPin, Package, RefreshCw } from 'lucide-react';
 import api from '@/shared/lib/api';
 
 const PRIMARY = '#122a4c';
+const DELIVERIES_PER_PAGE = 5;
+const PULL_REFRESH_THRESHOLD = 52;
+
+type DeliveryCategory = 'pending' | 'completed';
 
 export type DriverStop = {
   id: string;
@@ -90,37 +94,103 @@ export function MyDeliveriesScreen() {
   const navigate = useNavigate();
   const [routes, setRoutes] = useState<DriverRoute[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [activeCategory, setActiveCategory] = useState<DeliveryCategory>('pending');
+  const [pages, setPages] = useState<Record<DeliveryCategory, number>>({ pending: 1, completed: 1 });
+  const [totalPages, setTotalPages] = useState(1);
+  const [totals, setTotals] = useState<Record<DeliveryCategory, number>>({ pending: 0, completed: 0 });
   const [error, setError] = useState<string | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const activePage = pages[activeCategory];
 
-  const fetchDeliveries = useCallback(async () => {
+  const fetchDeliveries = useCallback(async ({ refresh = false }: { refresh?: boolean } = {}) => {
     try {
-      setLoading(true);
+      if (refresh) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+        setRoutes([]);
+      }
       setError(null);
-      const response = await api.get('/delivery-routes/my-deliveries');
+      const response = await api.get('/delivery-routes/my-deliveries', {
+        params: {
+          category: activeCategory,
+          page: activePage,
+          per_page: DELIVERIES_PER_PAGE,
+        },
+      });
+      const nextTotalPages = Math.max(1, Number(response.data?.total_pages) || 1);
       setRoutes(sortDeliveries(getApiList(response.data) as DriverRoute[]));
+      setTotalPages(nextTotalPages);
+      setTotals({
+        pending: Number(response.data?.totals?.pending) || 0,
+        completed: Number(response.data?.totals?.completed) || 0,
+      });
+      if (activePage > nextTotalPages) {
+        setPages((current) => ({ ...current, [activeCategory]: nextTotalPages }));
+      }
     } catch (err) {
       console.error('Erro ao buscar entregas:', err);
       setError('Não foi possível carregar suas entregas. Tente novamente.');
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
+      setHasLoaded(true);
     }
-  }, []);
+  }, [activeCategory, activePage]);
 
   useEffect(() => {
     fetchDeliveries();
   }, [fetchDeliveries]);
 
-  const totals = useMemo(() => {
-    return routes.reduce(
-      (acc, route) => ({
-        pending: acc.pending + (route.pendingCount || 0),
-        done: acc.done + (route.deliveredCount || 0),
-      }),
-      { pending: 0, done: 0 }
-    );
-  }, [routes]);
+  const handleTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    const scrollContainer = event.currentTarget.closest('main');
+    if ((scrollContainer?.scrollTop || 0) > 0) {
+      touchStartYRef.current = null;
+      return;
+    }
 
-  if (loading) {
+    touchStartYRef.current = event.touches[0]?.clientY ?? null;
+  }, []);
+
+  const handleTouchMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    if (isRefreshing || touchStartYRef.current === null) return;
+
+    const scrollContainer = event.currentTarget.closest('main');
+    const deltaY = (event.touches[0]?.clientY ?? 0) - touchStartYRef.current;
+    const isAtTop = (scrollContainer?.scrollTop || 0) <= 0;
+
+    if (!isAtTop || deltaY <= 0) {
+      setPullDistance(0);
+      return;
+    }
+
+    if (deltaY > 8) {
+      event.preventDefault();
+      setPullDistance(Math.min(deltaY * 0.45, 64));
+    }
+  }, [isRefreshing]);
+
+  const handleTouchEnd = useCallback(() => {
+    const shouldRefresh = pullDistance >= PULL_REFRESH_THRESHOLD;
+    touchStartYRef.current = null;
+    setPullDistance(0);
+
+    if (shouldRefresh) {
+      void fetchDeliveries({ refresh: true });
+    }
+  }, [fetchDeliveries, pullDistance]);
+
+  const changePage = (nextPage: number) => {
+    setPages((current) => ({
+      ...current,
+      [activeCategory]: Math.min(totalPages, Math.max(1, nextPage)),
+    }));
+  };
+
+  if (loading && !hasLoaded) {
     return (
       <div className="flex flex-col items-center justify-center py-24 space-y-4">
         <Loader2 className="w-8 h-8 text-[#122a4c] animate-spin" />
@@ -129,46 +199,56 @@ export function MyDeliveriesScreen() {
     );
   }
 
-  if (routes.length === 0 && !error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center px-6 py-16">
-        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-          <Inbox className="w-8 h-8 text-gray-400" />
-        </div>
-        <h3 className="font-semibold text-gray-800 mb-1">Nenhuma entrega atribuída no momento</h3>
-        <p className="text-sm text-gray-500 max-w-sm">
-          Quando o mercado atribuir uma entrega para você, ela aparecerá aqui.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="px-4 py-4 space-y-4 max-w-2xl mx-auto pb-24 sm:pb-8">
+    <div
+      className="px-4 py-4 space-y-4 max-w-2xl mx-auto pb-24 sm:pb-8"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      style={{ overscrollBehaviorY: 'contain' }}
+    >
+      {(pullDistance > 0 || isRefreshing) && (
+        <div
+          className="flex items-center justify-center overflow-hidden transition-[height]"
+          style={{ height: isRefreshing ? '36px' : `${pullDistance}px` }}
+        >
+          <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+            <RefreshCw className={isRefreshing ? 'animate-spin' : ''} size={15} color={PRIMARY} />
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between gap-3">
           <h2 className="font-semibold text-gray-900">Minhas Entregas</h2>
-          <button
-            onClick={fetchDeliveries}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-[#122a4c]"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Atualizar
-          </button>
+          <span className="text-[11px] font-medium text-gray-400">Puxe para baixo para atualizar</span>
         </div>
 
-        {routes.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3">
+        <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              aria-pressed={activeCategory === 'pending'}
+              onClick={() => setActiveCategory('pending')}
+              className={`rounded-2xl border bg-amber-50 p-3 text-left transition-all ${
+                activeCategory === 'pending' ? 'border-amber-400 shadow-sm ring-2 ring-amber-100' : 'border-amber-100'
+              }`}
+            >
               <div className="text-xs font-semibold uppercase text-amber-700">Pendentes</div>
               <div className="text-2xl font-bold text-amber-800">{totals.pending}</div>
-            </div>
-            <div className="rounded-2xl border border-green-100 bg-green-50 p-3">
+            </button>
+            <button
+              type="button"
+              aria-pressed={activeCategory === 'completed'}
+              onClick={() => setActiveCategory('completed')}
+              className={`rounded-2xl border bg-green-50 p-3 text-left transition-all ${
+                activeCategory === 'completed' ? 'border-green-400 shadow-sm ring-2 ring-green-100' : 'border-green-100'
+              }`}
+            >
               <div className="text-xs font-semibold uppercase text-green-700">Concluídas</div>
-              <div className="text-2xl font-bold text-green-800">{totals.done}</div>
-            </div>
-          </div>
-        )}
+              <div className="text-2xl font-bold text-green-800">{totals.completed}</div>
+            </button>
+        </div>
       </div>
 
       {error && (
@@ -179,7 +259,26 @@ export function MyDeliveriesScreen() {
       )}
 
       <div className="space-y-3">
-        {routes.map((route) => {
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm font-medium text-gray-500">
+            <Loader2 className="h-5 w-5 animate-spin text-[#122a4c]" />
+            Carregando entregas...
+          </div>
+        ) : routes.length === 0 && !error ? (
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+              <Inbox className="h-8 w-8 text-gray-400" />
+            </div>
+            <h3 className="mb-1 font-semibold text-gray-800">
+              {activeCategory === 'pending' ? 'Nenhuma entrega pendente' : 'Nenhuma entrega concluída'}
+            </h3>
+            <p className="max-w-sm text-sm text-gray-500">
+              {activeCategory === 'pending'
+                ? 'Quando o mercado atribuir uma nova entrega, ela aparecerá aqui.'
+                : 'As entregas finalizadas aparecerão aqui.'}
+            </p>
+          </div>
+        ) : routes.map((route) => {
           const style = getStatusStyle(route);
           const label = getDeliveryLabel(route);
           const neighborhoods = route.neighborhoods?.length ? route.neighborhoods.join(', ') : 'Sem bairro';
@@ -242,6 +341,32 @@ export function MyDeliveriesScreen() {
           );
         })}
       </div>
+
+      {!loading && totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-3">
+          <button
+            type="button"
+            onClick={() => changePage(activePage - 1)}
+            disabled={activePage <= 1}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Anterior
+          </button>
+          <span className="text-xs font-medium text-gray-500">
+            Página {activePage} de {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => changePage(activePage + 1)}
+            disabled={activePage >= totalPages}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Próxima
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
